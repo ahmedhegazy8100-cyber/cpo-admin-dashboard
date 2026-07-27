@@ -684,7 +684,8 @@
               location: stationDetails.address,
               description: stationDetails.description,
               landlordId: stationDetails.landlord,
-              amenities: stationDetails.amenity ? [stationDetails.amenity] : []
+              amenities: stationDetails.amenity ? [stationDetails.amenity] : [],
+              tariffId: stationDetails.tariffId || null // FIXED: Save station tariff (User Request)
             };
           }
           return s;
@@ -1899,7 +1900,7 @@
 
       const station = useMemo(() => stations.find(s => s.id === editingStationId), [stations, editingStationId]);
 
-      const [stationDetails, setStationDetails] = useState({ name: '', address: '', description: '', landlord: '', amenity: '' });
+      const [stationDetails, setStationDetails] = useState({ name: '', address: '', description: '', landlord: '', amenity: '', tariffId: '' });
       const [chargers, setChargers] = useState([]);
       const [formErrors, setFormErrors] = useState({});
       // FIXED: Added basicsErrors state for Step 1 validation (Fix 1)
@@ -1912,7 +1913,8 @@
             address: station.location,
             description: station.description,
             landlord: station.landlordId,
-            amenity: station.amenities[0] || ''
+            amenity: station.amenities[0] || '',
+            tariffId: station.tariffId || '' // FIXED: Load station tariff (User Request)
           });
 
           const stationPoints = points.filter(p => p.stationId === station.id && !p.isHistorical);
@@ -2160,6 +2162,11 @@
                     <SearchableDropdown options={amenities.map(a => ({ id: a.name, name: a.name }))} value={stationDetails.amenity} onChange={(val) => setStationDetails({ ...stationDetails, amenity: val })} error={basicsErrors.amenity} />
                     {basicsErrors.amenity && <div className="error-text">{basicsErrors.amenity}</div>}
                   </div>
+                </div>
+                {/* FIXED: Add Station-Level Tariff field overriding other levels per User Request */}
+                <div className="form-group">
+                  <label className="form-label">Station Tariff (Overrides Point & Connector Tariffs)</label>
+                  <SearchableDropdown options={INITIAL_TARIFFS} value={stationDetails.tariffId} onChange={(val) => setStationDetails({ ...stationDetails, tariffId: val })} placeholder="Select Station Tariff (Optional)..." />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Address <span>*</span></label>
@@ -2550,12 +2557,13 @@
                       const model = models.find(m => m.id === p.modelId);
                       const comm = INITIAL_COMMUNITIES.find(c => c.id === p.communityId);
                       let tStr = '—';
-                      if (p.connectorTariffs && p.connectorTariffs.length > 0) {
+                      // FIXED: Station tariff overrides point/connector tariffs (User Request)
+                      if (station && station.tariffId) {
+                        tStr = `${INITIAL_TARIFFS.find(t => t.id === station.tariffId)?.name || station.tariffId} (Station)`;
+                      } else if (p.connectorTariffs && p.connectorTariffs.length > 0) {
                         tStr = 'Split (Connector)';
                       } else if (p.tariffId) {
                         tStr = `${INITIAL_TARIFFS.find(t => t.id === p.tariffId)?.name || p.tariffId} (Point)`;
-                      } else if (station && station.tariffId) {
-                        tStr = `${INITIAL_TARIFFS.find(t => t.id === station.tariffId)?.name || station.tariffId} (Station)`;
                       }
 
                       const isStationDisconnected = !station || station.status === 'Undefined' || station.status === 'Inactive';
