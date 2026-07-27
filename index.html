@@ -2194,11 +2194,10 @@
                       <div key={charger.id} className="charger-edit-item" style={charger.pendingReassignTo ? { opacity: 0.6 } : {}}>
                         <div className="charger-edit-item-header">
                           {/* FIXED: Show point connection and app statuses next to name (Fix 5) */}
+                          {/* FIXED: Removed Point Name from charger row display per User Request */}
                           <div className="charger-edit-item-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <strong>{charger.id}</strong>
                             {charger.isNew && <span className="badge" style={{ fontSize: '9px', backgroundColor: '#E0F2FE', color: '#0369A1' }}>NEW</span>}
-                            <span>—</span>
-                            <span>{charger.name}</span>
                             <StatusBadge status={connStatus} />
                             <span className={`badge ${appStatus === 'Open' ? 'badge-active' : 'badge-inactive'}`}>
                               {appStatus}
@@ -2247,11 +2246,8 @@
                               </div>
                             </div>
 
-                            <div className="form-group">
-                              <label className="form-label">Point Name</label>
-                              <input type="text" className="input-field" value={charger.name} onChange={(e) => updateChargerField(idx, 'name', e.target.value)} />
-                            </div>
-                            <div className="form-group">
+                            {/* FIXED: Removed Point Name input field and made Community span 2 columns per User Request */}
+                            <div className="form-group" style={{ gridColumn: 'span 2' }}>
                               <label className="form-label">Community</label>
                               <SearchableDropdown options={INITIAL_COMMUNITIES} value={charger.communityId} onChange={(val) => updateChargerField(idx, 'communityId', val)} />
                             </div>
@@ -2438,7 +2434,8 @@
       
       const [globalSearch, setGlobalSearch] = useState('');
       
-      const [columnFilters, setColumnFilters] = useState({ id: '', name: '', stationId: '', status: '', modelId: '', tariffId: '', communityId: '', appStatus: '' });
+      // FIXED: Removed name column filter per User Request
+      const [columnFilters, setColumnFilters] = useState({ id: '', stationId: '', status: '', modelId: '', tariffId: '', communityId: '', appStatus: '' });
       const [activeFilterPopover, setActiveFilterPopover] = useState(null);
       const filterWrapperRef = useRef(null);
 
@@ -2461,7 +2458,7 @@
       const uniqueColumnValues = useMemo(() => {
         return {
           id: [...new Set(points.map(p => p.id))].map(v => ({ id: v, name: v })),
-          name: [...new Set(points.map(p => p.name))].map(v => ({ id: v, name: v })),
+          // FIXED: Removed name column values mapper per User Request
           stationId: stations.map(s => ({ id: s.id, name: s.name })),
           status: ['Undefined', 'Active', 'Inactive', 'Closed'].map(v => ({ id: v, name: v })),
           modelId: models.map(m => ({ id: m.id, name: m.name })),
@@ -2477,7 +2474,8 @@
           const query = globalSearch.toLowerCase();
           result = result.filter(p => {
             const mName = models.find(m => m.id === p.modelId)?.name || '';
-            return p.id.toLowerCase().includes(query) || p.name.toLowerCase().includes(query) || mName.toLowerCase().includes(query);
+            // FIXED: Removed p.name from search scope per User Request
+            return p.id.toLowerCase().includes(query) || mName.toLowerCase().includes(query);
           });
         }
         Object.keys(columnFilters).forEach(key => {
@@ -2502,10 +2500,11 @@
             <div className="toolbar-left">
               <div className="search-input-wrapper">
                 <Icon name="search" />
-                <input type="text" className="search-input" placeholder="Search Charger ID, Name, Model..." value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)} />
+                {/* FIXED: Updated placeholder text per User Request */}
+                <input type="text" className="search-input" placeholder="Search Charger ID, Model..." value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)} />
               </div>
               {(globalSearch || Object.values(columnFilters).some(f => f)) && (
-                <span className="clear-filters" onClick={() => { setGlobalSearch(''); setColumnFilters({ id: '', name: '', stationId: '', status: '', modelId: '', tariffId: '', communityId: '', appStatus: '' }); }}>Clear all filters</span>
+                <span className="clear-filters" onClick={() => { setGlobalSearch(''); setColumnFilters({ id: '', stationId: '', status: '', modelId: '', tariffId: '', communityId: '', appStatus: '' }); }}>Clear all filters</span>
               )}
             </div>
           </div>
@@ -2515,8 +2514,9 @@
               <table>
                 <thead>
                   <tr>
-                    {['id', 'name', 'stationId', 'status', 'modelId', 'tariffId', 'communityId', 'appStatus'].map(colKey => {
-                      const label = { id: 'Charger ID', name: 'Point Name', stationId: 'Station', status: 'Connection Status', modelId: 'Model', tariffId: 'Tariff', communityId: 'Community', appStatus: 'App Status' }[colKey];
+                    {/* FIXED: Removed name column from keys list and labels map per User Request */}
+                    {['id', 'stationId', 'status', 'modelId', 'tariffId', 'communityId', 'appStatus'].map(colKey => {
+                      const label = { id: 'Charger ID', stationId: 'Station', status: 'Connection Status', modelId: 'Model', tariffId: 'Tariff', communityId: 'Community', appStatus: 'App Status' }[colKey];
                       const isFilterActive = columnFilters[colKey] !== '';
                       return (
                         <th key={colKey}>
@@ -2543,7 +2543,8 @@
                   </tr>
                 </thead>
                 <tbody>
-                  {processedPoints.length === 0 ? <tr><td colSpan="10" style={{ textAlign: 'center', padding: '30px' }}>No points found.</td></tr> : (
+                  {/* FIXED: Adjusted colSpan to 9 per User Request */}
+                  {processedPoints.length === 0 ? <tr><td colSpan="9" style={{ textAlign: 'center', padding: '30px' }}>No points found.</td></tr> : (
                     processedPoints.map(p => {
                       const station = stations.find(s => s.id === p.stationId);
                       const model = models.find(m => m.id === p.modelId);
@@ -2564,7 +2565,7 @@
                       return (
                         <tr key={`${p.id}-${p.isHistorical ? 'hist' : 'act'}`} className={p.isDeleted ? 'row-deleted' : ''} style={p.isHistorical ? { opacity: 0.6 } : {}}>
                           <td><strong>{p.id}</strong> {p.isHistorical && <span className="badge badge-historical" style={{ fontSize: '9px', marginLeft: '6px' }}>GHOST</span>}</td>
-                          <td>{p.name}</td>
+                          {/* FIXED: Removed name cell per User Request */}
                           <td>
                             <div>{station ? station.name : p.stationId}</div>
                             {p.isHistorical && <div style={{ fontSize: '11px', color: 'var(--primary)' }}>➜ {stations.find(s => s.id === p.reassignedToStationId)?.name}</div>}
