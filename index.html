@@ -1,0 +1,3298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shahn CPO Portal - Asset Management Module</title>
+  
+  <!-- IBM Plex Sans Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Universal Error Catching & Debugging Overlay -->
+  <script>
+    window.addEventListener('error', function(e) {
+      showErrorOverlay('JavaScript Runtime Error', e.message, e.filename, e.lineno, e.error ? e.error.stack : 'No stack trace available.');
+    });
+
+    window.addEventListener('unhandledrejection', function(e) {
+      showErrorOverlay('Promise Rejection Error', e.reason ? e.reason.message || e.reason : 'Unknown rejection reason.', '', '', e.reason ? e.reason.stack : '');
+    });
+
+    const nativeError = console.error;
+    console.error = function(...args) {
+      nativeError.apply(console, args);
+      const combined = args.join(' ');
+      if (combined.includes('Babel') || combined.includes('SyntaxError') || combined.includes('Failed to') || combined.includes('error')) {
+        showErrorOverlay('Babel / React Component Error', combined, '', '', new Error().stack);
+      }
+    };
+
+    function showErrorOverlay(title, msg, file, line, stack) {
+      if (document.getElementById('cpo-error-div')) return;
+      if (!document.body) {
+        setTimeout(function() { showErrorOverlay(title, msg, file, line, stack); }, 50);
+        return;
+      }
+      const overlay = document.createElement('div');
+      overlay.id = 'cpo-error-div';
+      overlay.style.position = 'fixed';
+      overlay.style.top = '0';
+      overlay.style.left = '0';
+      overlay.style.width = '100vw';
+      overlay.style.height = '100vh';
+      overlay.style.backgroundColor = '#FFF5F5';
+      overlay.style.color = '#9B2C2C';
+      overlay.style.zIndex = '9999999';
+      overlay.style.padding = '40px';
+      overlay.style.overflow = 'auto';
+      overlay.style.boxSizing = 'border-box';
+      overlay.style.fontFamily = 'monospace';
+      overlay.style.fontSize = '14px';
+
+      overlay.innerHTML = `
+        <div style="max-width: 900px; margin: 0 auto; background: #FFF; padding: 30px; border-radius: 12px; border: 1px solid #FEB2B2; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);">
+          <h2 style="color: #E53E3E; margin-top: 0; border-bottom: 2px solid #FED7D7; padding-bottom: 10px;">🚨 ${title}</h2>
+          <p style="font-size: 16px; margin: 15px 0;"><strong>Error Message:</strong> ${msg}</p>
+          ${file ? `<p style="margin: 10px 0;"><strong>Source File:</strong> ${file} (Line ${line})</p>` : ''}
+          <h3 style="margin-top: 25px; color: #742A2A;">Stack Trace & Diagnostic Logs:</h3>
+          <pre style="background: #F7FAFC; border: 1px solid #E2E8F0; padding: 15px; border-radius: 8px; overflow-x: auto; max-height: 400px; white-space: pre-wrap; font-size: 12px; line-height: 1.5; color: #4A5568;">${stack || 'No stack details available.'}</pre>
+          <div style="margin-top: 20px; display: flex; gap: 12px;">
+            <button onclick="window.location.reload()" style="background: #E53E3E; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer;">Reload Page</button>
+            <button onclick="document.getElementById('cpo-error-div').remove()" style="background: #EDF2F7; color: #4A5568; border: 1px solid #CBD5E0; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer;">Dismiss Overlay</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+    }
+  </script>
+
+  <!-- React & ReactDOM (UMD Production) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel Standalone (In-browser compilation) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React Code with Babel -->
+  <script type="text/babel">
+    const { useState, useEffect, useContext, createContext, useMemo, useRef } = React;
+
+    // --- INITIAL DATA CONSTANTS ---
+    const INITIAL_LANDLORDS = [
+      { id: 'LL-101', name: 'Al Futtaim Group' },
+      { id: 'LL-102', name: 'Emaar Misr' },
+      { id: 'LL-103', name: 'Sodic Developments' },
+      { id: 'LL-104', name: 'Orascom Development' }
+    ];
+
+    const INITIAL_COMMUNITIES = [
+      { id: 'COM-201', name: 'Sheikh Zayed' },
+      { id: 'COM-202', name: 'New Cairo' },
+      { id: 'COM-203', name: 'Heliopolis' },
+      { id: 'COM-204', name: 'Maadi' },
+      { id: 'COM-205', name: 'Alexandria Desert Road' }
+    ];
+
+    const INITIAL_MODELS = [
+      {
+        id: 'MOD-ABB-50',
+        name: 'ABB Terra 54',
+        vendor: 'ABB',
+        type: 'AC&DC',
+        connectorTypes: [
+          { label: 'CCS2', power: '50 kW', kind: 'DC' },
+          { label: 'CHAdeMO', power: '50 kW', kind: 'DC' },
+          { label: 'Type 2', power: '22 kW', kind: 'AC' }
+        ],
+        builtin: true,
+        totalPower: '122 kW',
+        connections: '3 Connectors'
+      },
+      {
+        id: 'MOD-ALFEN-22',
+        name: 'Alfen Eve Double',
+        vendor: 'Alfen',
+        type: 'AC',
+        connectorTypes: [
+          { label: 'Type 2 Socket A', power: '22 kW', kind: 'AC' },
+          { label: 'Type 2 Socket B', power: '22 kW', kind: 'AC' }
+        ],
+        builtin: false,
+        totalPower: '44 kW',
+        connections: '2 Sockets'
+      },
+      {
+        id: 'MOD-KEMPOWER-150',
+        name: 'Kempower C-Series',
+        vendor: 'Kempower',
+        type: 'DC',
+        connectorTypes: [
+          { label: 'CCS2 Plug 1', power: '150 kW', kind: 'DC' },
+          { label: 'CCS2 Plug 2', power: '150 kW', kind: 'DC' }
+        ],
+        builtin: true,
+        totalPower: '300 kW',
+        connections: '2 Connectors'
+      }
+    ];
+
+    const INITIAL_TARIFFS = [
+      { id: 'TRF-AC-NORMAL', name: 'Standard AC Tariff', rate: 5.00 },
+      { id: 'TRF-DC-FAST', name: 'DC Fast Tariff', rate: 9.00 },
+      { id: 'TRF-HIGH-PEAK', name: 'Peak Hour DC Tariff', rate: 11.50 }
+    ];
+
+    const INITIAL_STATIONS = [
+      {
+        id: 'STN-10001',
+        name: 'Heliopolis Plaza',
+        landlordId: 'LL-101',
+        location: 'Heliopolis, Cairo',
+        status: 'Active',
+        prevStatus: null,
+        createDate: '2026-01-15',
+        revenue30: 24500,
+        sessions30: 120,
+        sessionsEver: 540,
+        description: 'Premium EV charging hub in the heart of Heliopolis near major shopping spots.',
+        amenities: ['Parking', 'Restrooms', 'WiFi', 'Food nearby']
+      },
+      {
+        id: 'STN-10002',
+        name: 'Zayed Galleria Mall',
+        landlordId: 'LL-103',
+        location: 'Sheikh Zayed City, Giza',
+        status: 'Partial Active',
+        prevStatus: null,
+        createDate: '2026-03-10',
+        revenue30: 18200,
+        sessions30: 95,
+        sessionsEver: 310,
+        description: 'High-speed charging station serving Zayed residents and mall visitors.',
+        amenities: ['Parking', 'Food nearby', 'Security cameras', '24/7 access']
+      },
+      {
+        id: 'STN-10003',
+        name: 'Uptown Cairo Club',
+        landlordId: 'LL-102',
+        location: 'Mokattam, Cairo',
+        status: 'Inactive',
+        prevStatus: null,
+        createDate: '2026-05-01',
+        revenue30: 0,
+        sessions30: 0,
+        sessionsEver: 45,
+        description: 'Exclusive charging points inside Uptown Cairo golf club.',
+        amenities: ['Parking', 'Restrooms', 'WiFi', 'Food nearby', 'Security cameras']
+      },
+      {
+        id: 'STN-10004',
+        name: 'Cairo Festival City Hub',
+        landlordId: 'LL-101',
+        location: 'New Cairo, Egypt',
+        status: 'Undefined',
+        prevStatus: null,
+        createDate: '2026-07-18',
+        revenue30: 0,
+        sessions30: 0,
+        sessionsEver: 0,
+        description: 'Newly installed chargers awaiting final commissioning and testing.',
+        amenities: ['Parking', 'Restrooms', 'Food nearby', 'Convenience store']
+      },
+      {
+        id: 'STN-10005',
+        name: 'Mall of Arabia Hub (Deleted)',
+        landlordId: 'LL-102',
+        location: '6th of October City, Giza',
+        status: 'Active',
+        prevStatus: null,
+        createDate: '2026-06-15',
+        revenue30: 12000,
+        sessions30: 50,
+        sessionsEver: 220,
+        description: 'Historical charging station that was decommissioned.',
+        amenities: ['Parking', 'Restrooms', 'Food nearby'],
+        isDeleted: true,
+        appStatus: 'Deleted'
+      }
+    ];
+
+    const INITIAL_POINTS = [
+      {
+        id: 'CP-ABB-101',
+        name: 'ABB Terra 54 — Point 1',
+        modelId: 'MOD-ABB-50',
+        tariffId: null,
+        connectorTariffs: [
+          { label: 'CCS2', tariffId: 'TRF-DC-FAST' },
+          { label: 'CHAdeMO', tariffId: 'TRF-DC-FAST' },
+          { label: 'Type 2', tariffId: 'TRF-AC-NORMAL' }
+        ],
+        communityId: 'COM-203',
+        stationId: 'STN-10001',
+        status: 'Active',
+        prevStatus: null,
+        sessions30: 75,
+        activeSessionNow: false,
+        isHistorical: false,
+        reassignedToStationId: null
+      },
+      {
+        id: 'CP-ALFEN-102',
+        name: 'Alfen Eve Double — Point 1',
+        modelId: 'MOD-ALFEN-22',
+        tariffId: 'TRF-AC-NORMAL',
+        connectorTariffs: null,
+        communityId: 'COM-203',
+        stationId: 'STN-10001',
+        status: 'Active',
+        prevStatus: null,
+        sessions30: 45,
+        activeSessionNow: true,
+        isHistorical: false,
+        reassignedToStationId: null
+      },
+      {
+        id: 'CP-KEM-201',
+        name: 'Kempower C-Series — Point 1',
+        modelId: 'MOD-KEMPOWER-150',
+        tariffId: null,
+        connectorTariffs: [
+          { label: 'CCS2 Plug 1', tariffId: 'TRF-DC-FAST' },
+          { label: 'CCS2 Plug 2', tariffId: 'TRF-DC-FAST' }
+        ],
+        communityId: 'COM-201',
+        stationId: 'STN-10002',
+        status: 'Active',
+        prevStatus: null,
+        sessions30: 60,
+        activeSessionNow: false,
+        isHistorical: false,
+        reassignedToStationId: null
+      },
+      {
+        id: 'CP-ALFEN-202',
+        name: 'Alfen Eve Double — Point 2',
+        modelId: 'MOD-ALFEN-22',
+        tariffId: 'TRF-AC-NORMAL',
+        connectorTariffs: null,
+        communityId: 'COM-201',
+        stationId: 'STN-10002',
+        status: 'Inactive',
+        prevStatus: null,
+        sessions30: 35,
+        activeSessionNow: false,
+        isHistorical: false,
+        reassignedToStationId: null
+      },
+      {
+        id: 'CP-ALFEN-301',
+        name: 'Alfen Eve Double — Point 3',
+        modelId: 'MOD-ALFEN-22',
+        tariffId: 'TRF-AC-NORMAL',
+        connectorTariffs: null,
+        communityId: 'COM-202',
+        stationId: 'STN-10003',
+        status: 'Inactive',
+        prevStatus: null,
+        sessions30: 0,
+        activeSessionNow: false,
+        isHistorical: false,
+        reassignedToStationId: null
+      },
+      {
+        id: 'CP-ABB-401',
+        name: 'ABB Terra 54 — Point 2',
+        modelId: 'MOD-ABB-50',
+        tariffId: null,
+        connectorTariffs: [
+          { label: 'CCS2', tariffId: 'TRF-DC-FAST' },
+          { label: 'CHAdeMO', tariffId: 'TRF-DC-FAST' },
+          { label: 'Type 2', tariffId: 'TRF-AC-NORMAL' }
+        ],
+        communityId: 'COM-202',
+        stationId: 'STN-10004',
+        status: 'Undefined',
+        prevStatus: null,
+        sessions30: 0,
+        activeSessionNow: false,
+        isHistorical: false,
+        reassignedToStationId: null
+      },
+      {
+        id: 'CP-ABB-501',
+        name: 'ABB Terra 54 — Point 3 (Deleted)',
+        modelId: 'MOD-ABB-50',
+        tariffId: null,
+        connectorTariffs: [
+          { label: 'CCS2', tariffId: 'TRF-DC-FAST' },
+          { label: 'CHAdeMO', tariffId: 'TRF-DC-FAST' },
+          { label: 'Type 2', tariffId: 'TRF-AC-NORMAL' }
+        ],
+        communityId: 'COM-202',
+        stationId: 'STN-10005',
+        status: 'Active',
+        prevStatus: null,
+        sessions30: 10,
+        activeSessionNow: false,
+        isHistorical: false,
+        reassignedToStationId: null,
+        isDeleted: true,
+        appStatus: 'Deleted'
+      }
+    ];
+
+
+    // --- CONTEXT ---
+    const CpoContext = createContext();
+
+    const CpoProvider = ({ children }) => {
+      const [stations, setStations] = useState(() => INITIAL_STATIONS.map(s => ({ ...s, appStatus: s.appStatus || 'Open', isDeleted: s.isDeleted || false })));
+      const [points, setPoints] = useState(() => INITIAL_POINTS.map(p => ({ ...p, appStatus: p.appStatus || 'Open', isDeleted: p.isDeleted || false })));
+      const [currentRoute, setCurrentRoute] = useState('stations'); // 'stations' | 'points' | 'create-station' | 'edit-station' | 'config'
+      const [editingStationId, setEditingStationId] = useState(null);
+      const [configFocusSection, setConfigFocusSection] = useState('all'); // 'all' | 'models' | 'connectors' | 'amenities'
+
+      // Dynamic Configurations states
+      const [models, setModels] = useState(INITIAL_MODELS);
+      const [connectorTypes, setConnectorTypes] = useState([
+        { id: 'CCS2', name: 'CCS2' },
+        { id: 'CHAdeMO', name: 'CHAdeMO' },
+        { id: 'Type 2', name: 'Type 2' },
+        { id: 'Type 2 Socket A', name: 'Type 2 Socket A' },
+        { id: 'Type 2 Socket B', name: 'Type 2 Socket B' },
+        { id: 'CCS2 Plug 1', name: 'CCS2 Plug 1' },
+        { id: 'CCS2 Plug 2', name: 'CCS2 Plug 2' }
+      ]);
+      const [amenities, setAmenities] = useState([
+        { id: 'Parking', name: 'Parking', icon: 'parking' },
+        { id: 'Restrooms', name: 'Restrooms', icon: 'restroom' },
+        { id: 'WiFi', name: 'WiFi', icon: 'wifi' },
+        { id: 'Food nearby', name: 'Food nearby', icon: 'coffee' },
+        { id: 'Covered/sheltered', name: 'Covered/sheltered', icon: 'charger' },
+        { id: '24/7 access', name: '24/7 access', icon: 'info' },
+        { id: 'Convenience store', name: 'Convenience store', icon: 'shop' },
+        { id: 'Security cameras', name: 'Security cameras', icon: 'seating' }
+      ]);
+      const [vendors, setVendors] = useState(['ABB', 'Alfen', 'Kempower']);
+      const [hasModelPermission, setHasModelPermission] = useState(true);
+
+
+      // Lock helpers
+      const isModelLocked = (modelId) => {
+        return points.some(p => p.modelId === modelId && !p.isHistorical);
+      };
+
+      const isConnectorLocked = (connName) => {
+        return models.some(m => m.connectorTypes.some(c => c.label === connName));
+      };
+
+      const isAmenityLocked = (amenityName) => {
+        return stations.some(s => !s.isDeleted && s.amenities.includes(amenityName));
+      };
+
+      // Model Actions
+      const addModel = (modelObj) => {
+        setModels([...models, modelObj]);
+        if (!vendors.includes(modelObj.vendor)) {
+          setVendors([...vendors, modelObj.vendor]);
+        }
+      };
+
+      const updateModel = (modelId, updatedObj) => {
+        if (isModelLocked(modelId)) return { success: false, message: "Model is locked and cannot be edited." };
+        setModels(models.map(m => m.id === modelId ? { ...m, ...updatedObj } : m));
+        if (updatedObj.vendor && !vendors.includes(updatedObj.vendor)) {
+          setVendors([...vendors, updatedObj.vendor]);
+        }
+        return { success: true };
+      };
+
+      const deleteModel = (modelId) => {
+        if (isModelLocked(modelId)) return { success: false, message: "Model is locked and cannot be deleted." };
+        setModels(models.filter(m => m.id !== modelId));
+        return { success: true };
+      };
+
+      // Connector Actions
+      const addConnectorType = (name) => {
+        if (connectorTypes.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+          return { success: false, message: "Connector type already exists." };
+        }
+        setConnectorTypes([...connectorTypes, { id: name, name }]);
+        return { success: true };
+      };
+
+      const updateConnectorType = (id, newName) => {
+        if (isConnectorLocked(id)) return { success: false, message: "Connector is locked and cannot be renamed." };
+        setConnectorTypes(connectorTypes.map(c => c.id === id ? { id: newName, name: newName } : c));
+        return { success: true };
+      };
+
+      const deleteConnectorType = (id) => {
+        if (isConnectorLocked(id)) return { success: false, message: "Connector is currently in use by a model." };
+        setConnectorTypes(connectorTypes.filter(c => c.id !== id));
+        return { success: true };
+      };
+
+      // Amenity Actions
+      const addAmenity = (name, icon) => {
+        if (amenities.some(a => a.name.toLowerCase() === name.toLowerCase())) {
+          return { success: false, message: "Amenity already exists." };
+        }
+        setAmenities([...amenities, { id: name, name, icon }]);
+        return { success: true };
+      };
+
+      const updateAmenity = (id, newName, newIcon) => {
+        if (isAmenityLocked(id)) return { success: false, message: "Amenity is active on live stations." };
+        setAmenities(amenities.map(a => a.id === id ? { id: newName, name: newName, icon: newIcon } : a));
+        return { success: true };
+      };
+
+      const deleteAmenity = (id) => {
+        if (isAmenityLocked(id)) return { success: false, message: "Amenity is currently assigned to stations." };
+        setAmenities(amenities.filter(a => a.id !== id));
+        return { success: true };
+      };
+
+      const addVendor = (name) => {
+        if (!vendors.includes(name)) {
+          setVendors([...vendors, name]);
+        }
+      };
+
+      // Rollup calculation logic for station status
+      const getStationStatusRollup = (stationId, currentPoints, currentStations) => {
+        const stationObj = currentStations.find(s => s.id === stationId);
+        if (stationObj && stationObj.isDeleted) {
+          return stationObj.status;
+        }
+        const activePoints = currentPoints.filter(p => p.stationId === stationId && !p.isHistorical && !p.isDeleted);
+        
+        if (activePoints.length === 0) {
+          return 'Undefined';
+        }
+
+        const statuses = activePoints.map(p => p.status);
+
+        if (statuses.every(s => s === 'Closed')) return 'Closed';
+        if (statuses.every(s => s === 'Undefined')) return 'Undefined';
+        if (statuses.every(s => s === 'Active')) return 'Active';
+        if (statuses.every(s => s === 'Inactive')) return 'Inactive';
+        
+        return 'Partial Active';
+      };
+
+      const syncStationStatuses = (currentPoints, currentStations) => {
+        return currentStations.map(s => {
+          if (s.isDeleted) return s;
+          const rolledStatus = getStationStatusRollup(s.id, currentPoints, currentStations);
+          return { ...s, status: rolledStatus };
+        });
+      };
+
+      // Actions
+      const deleteStation = (stationId) => {
+        const station = stations.find(s => s.id === stationId);
+        if (!station) return { success: false, message: "Station not found." };
+
+        const isUndefined = station.status === 'Undefined';
+
+        if (isUndefined) {
+          // Hard deletion
+          setStations(prev => prev.filter(s => s.id !== stationId));
+          setPoints(prev => prev.filter(p => p.stationId !== stationId));
+        } else {
+          // Soft deletion
+          setStations(prev => prev.map(s => {
+            if (s.id === stationId) {
+              return { ...s, isDeleted: true, appStatus: 'Deleted' };
+            }
+            return s;
+          }));
+          setPoints(prev => prev.map(p => {
+            if (p.stationId === stationId && !p.isHistorical) {
+              return { ...p, isDeleted: true, appStatus: 'Deleted' };
+            }
+            return p;
+          }));
+        }
+        return { success: true };
+      };
+
+      const reopenStation = (stationId) => {
+        const updatedPoints = points.map(p => {
+          if (p.stationId === stationId && !p.isHistorical) {
+            return {
+              ...p,
+              status: p.prevStatus || 'Inactive',
+              prevStatus: null
+            };
+          }
+          return p;
+        });
+
+        const updatedStations = stations.map(s => {
+          if (s.id === stationId) {
+            return {
+              ...s,
+              status: s.prevStatus || 'Inactive',
+              prevStatus: null
+            };
+          }
+          return s;
+        });
+
+        setPoints(updatedPoints);
+        setStations(syncStationStatuses(updatedPoints, updatedStations));
+        return { success: true };
+      };
+
+      const deletePoint = (pointId) => {
+        const point = points.find(p => p.id === pointId);
+        if (!point) return { success: false, message: "Point not found." };
+
+        const isUndefined = point.status === 'Undefined';
+
+        if (isUndefined) {
+          // Hard deletion
+          const updatedPoints = points.filter(p => p.id !== pointId);
+          setPoints(updatedPoints);
+          setStations(syncStationStatuses(updatedPoints, stations));
+        } else {
+          // Soft deletion
+          const updatedPoints = points.map(p => {
+            if (p.id === pointId) {
+              return { ...p, isDeleted: true, appStatus: 'Deleted' };
+            }
+            return p;
+          });
+          setPoints(updatedPoints);
+          setStations(syncStationStatuses(updatedPoints, stations));
+        }
+        return { success: true };
+      };
+
+      const reopenPoint = (pointId) => {
+        const updatedPoints = points.map(p => {
+          if (p.id === pointId) {
+            return {
+              ...p,
+              status: p.prevStatus || 'Inactive',
+              prevStatus: null
+            };
+          }
+          return p;
+        });
+
+        setPoints(updatedPoints);
+        setStations(syncStationStatuses(updatedPoints, stations));
+        return { success: true };
+      };
+
+      const reassignPointImmediately = (pointId, targetStationId) => {
+        const sourcePoint = points.find(p => p.id === pointId && !p.isHistorical);
+        if (!sourcePoint) return { success: false, message: "Point not found." };
+
+        const oldPointGhost = {
+          ...sourcePoint,
+          isHistorical: true,
+          reassignedToStationId: targetStationId
+        };
+
+        const newPointActive = {
+          ...sourcePoint,
+          stationId: targetStationId,
+          isHistorical: false,
+          sessions30: 0,
+          activeSessionNow: false
+        };
+
+        const updatedPoints = [
+          ...points.map(p => (p.id === pointId && !p.isHistorical ? oldPointGhost : p)),
+          newPointActive
+        ];
+
+        setPoints(updatedPoints);
+        setStations(syncStationStatuses(updatedPoints, stations));
+        return { success: true };
+      };
+
+      const closeStationOnApp = (stationId) => {
+        setStations(prev => prev.map(s => s.id === stationId ? { ...s, appStatus: 'Closed' } : s));
+      };
+
+      const openStationOnApp = (stationId) => {
+        setStations(prev => prev.map(s => s.id === stationId ? { ...s, appStatus: 'Open' } : s));
+      };
+
+      const closePointOnApp = (pointId) => {
+        setPoints(prev => prev.map(p => p.id === pointId ? { ...p, appStatus: 'Closed' } : p));
+      };
+
+      const openPointOnApp = (pointId) => {
+        setPoints(prev => prev.map(p => p.id === pointId ? { ...p, appStatus: 'Open' } : p));
+      };
+
+      const addStation = (stationData, blockData) => {
+        const newStationId = `STN-${Math.floor(10000 + Math.random() * 90000)}`;
+        
+        const newStation = {
+          id: newStationId,
+          name: stationData.name,
+          landlordId: stationData.landlord,
+          location: stationData.address,
+          status: 'Undefined',
+          prevStatus: null,
+          createDate: new Date().toISOString().split('T')[0],
+          revenue30: 0,
+          sessions30: 0,
+          sessionsEver: 0,
+          description: stationData.description,
+          amenities: stationData.amenities,
+          tariffId: stationData.tariffId || null,
+          appStatus: 'Open'
+        };
+
+        const newPoints = [];
+        blockData.forEach(block => {
+          const modelObj = models.find(m => m.id === block.modelId);
+          block.pointIds.forEach((pid, idx) => {
+            newPoints.push({
+              id: pid,
+              name: `${modelObj.name} — Point ${idx + 1}`,
+              modelId: block.modelId,
+              tariffId: block.tariffMode === 'point' ? block.tariffId : null,
+              connectorTariffs: block.tariffMode === 'connector' ? block.connectorTariffs : null,
+              communityId: block.communityId || null,
+              stationId: newStationId,
+              status: 'Undefined',
+              prevStatus: null,
+              sessions30: 0,
+              activeSessionNow: false,
+              isHistorical: false,
+              reassignedToStationId: null,
+              appStatus: 'Open'
+            });
+          });
+        });
+
+        const updatedPoints = [...points, ...newPoints];
+        setPoints(updatedPoints);
+        
+        const updatedStations = [...stations, newStation];
+        setStations(syncStationStatuses(updatedPoints, updatedStations));
+        
+        return newStationId;
+      };
+
+      const updateStation = (stationId, stationDetails, updatedChargersList) => {
+        const updatedStations = stations.map(s => {
+          if (s.id === stationId) {
+            return {
+              ...s,
+              name: stationDetails.name,
+              location: stationDetails.address,
+              description: stationDetails.description,
+              landlordId: stationDetails.landlord,
+              amenities: stationDetails.amenity ? [stationDetails.amenity] : []
+            };
+          }
+          return s;
+        });
+
+        let currentPointsList = [...points];
+
+        updatedChargersList.forEach(charger => {
+          if (charger.isNew) {
+            const newPointId = `CP-GEN-${Math.floor(100000 + Math.random() * 900000)}`;
+            const modelObj = models.find(m => m.id === charger.modelId);
+            currentPointsList.push({
+              id: newPointId,
+              name: charger.name || `${modelObj.name} — Auto Point`,
+              modelId: charger.modelId,
+              tariffId: charger.tariffMode === 'same' ? charger.tariffId : null,
+              connectorTariffs: charger.tariffMode === 'per-connector' ? charger.connectorTariffs : null,
+              communityId: charger.communityId || null,
+              stationId: stationId,
+              status: 'Undefined',
+              prevStatus: null,
+              sessions30: 0,
+              activeSessionNow: false,
+              isHistorical: false,
+              reassignedToStationId: null
+            });
+          } else {
+            const existingPoint = currentPointsList.find(p => p.id === charger.id && !p.isHistorical);
+            if (existingPoint) {
+              if (charger.pendingReassignTo) {
+                existingPoint.isHistorical = true;
+                existingPoint.reassignedToStationId = charger.pendingReassignTo;
+
+                currentPointsList.push({
+                  ...existingPoint,
+                  stationId: charger.pendingReassignTo,
+                  isHistorical: false,
+                  name: charger.name,
+                  tariffId: charger.tariffMode === 'same' ? charger.tariffId : null,
+                  connectorTariffs: charger.tariffMode === 'per-connector' ? charger.connectorTariffs : null,
+                  communityId: charger.communityId || null,
+                  sessions30: 0,
+                  activeSessionNow: false
+                });
+              } else {
+                existingPoint.name = charger.name;
+                existingPoint.tariffId = charger.tariffMode === 'same' ? charger.tariffId : null;
+                existingPoint.connectorTariffs = charger.tariffMode === 'per-connector' ? charger.connectorTariffs : null;
+                existingPoint.communityId = charger.communityId || null;
+              }
+            }
+          }
+        });
+
+        const activeStationPoints = currentPointsList.filter(p => p.stationId === stationId && !p.isHistorical);
+        
+        setPoints(currentPointsList);
+        
+        const finalStations = updatedStations.map(s => {
+          if (s.id === stationId) {
+            if (activeStationPoints.length === 0) {
+              return { ...s, status: 'Undefined' };
+            }
+          }
+          return s;
+        });
+
+        setStations(syncStationStatuses(currentPointsList, finalStations));
+        return { success: true };
+      };
+
+      const navigateTo = (route, param = null) => {
+        setCurrentRoute(route);
+        if (route === 'edit-station') {
+          setEditingStationId(param);
+        } else {
+          setEditingStationId(null);
+        }
+        if (route === 'config') {
+          setConfigFocusSection(param || 'all');
+        } else {
+          setConfigFocusSection('all');
+        }
+      };
+
+      return (
+        <CpoContext.Provider value={{
+          stations,
+          points,
+          currentRoute,
+          editingStationId,
+          configFocusSection,
+          models,
+          connectorTypes,
+          amenities,
+          vendors,
+          hasModelPermission,
+          setHasModelPermission,
+          isModelLocked,
+          isConnectorLocked,
+          isAmenityLocked,
+          addModel,
+          updateModel,
+          deleteModel,
+          addConnectorType,
+          updateConnectorType,
+          deleteConnectorType,
+          addAmenity,
+          updateAmenity,
+          deleteAmenity,
+          addVendor,
+          reopenStation,
+          deleteStation,
+          reopenPoint,
+          deletePoint,
+          reassignPointImmediately,
+          addStation,
+          updateStation,
+          closeStationOnApp,
+          openStationOnApp,
+          closePointOnApp,
+          openPointOnApp,
+          navigateTo
+        }}>
+          {children}
+        </CpoContext.Provider>
+      );
+    };
+
+    // --- REUSABLE COMPONENTS ---
+    
+    // Status Badge
+    const StatusBadge = ({ status, deleted }) => {
+      let badgeClass = 'badge-undefined';
+      if (status === 'Active') badgeClass = 'badge-active';
+      else if (status === 'Inactive') badgeClass = 'badge-inactive';
+      else if (status === 'Partial Active') badgeClass = 'badge-partial';
+      else if (status === 'Closed') badgeClass = 'badge-closed';
+      
+      return (
+        <span className={`badge ${badgeClass}`}>
+          {status}
+        </span>
+      );
+    };
+
+    // Tooltip wrapper
+    const Tooltip = ({ text, children }) => {
+      if (!text) return children;
+      return (
+        <div className="tooltip-wrapper">
+          {children}
+          <span className="tooltip-text">{text}</span>
+        </div>
+      );
+    };
+
+    // Reusable Modal Component
+    const Modal = ({ isOpen, onClose, title, children, footerButtons }) => {
+      if (!isOpen) return null;
+      return (
+        <div className="modal-overlay" onClick={onClose}>
+          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{title}</h3>
+              <button className="modal-close-btn" onClick={onClose}>
+                <Icon name="close" />
+              </button>
+            </div>
+            <div className="modal-body">
+              {children}
+            </div>
+            {footerButtons && (
+              <div className="modal-footer">
+                {footerButtons}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    // Drawer component (440px wide sliding right-panel)
+    const Drawer = ({ isOpen, onClose, title, children, footerButtons }) => {
+      if (!isOpen) return null;
+      return (
+        <div className="drawer-scrim" onClick={onClose}>
+          <div className="drawer-container" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-header">
+              <h3>{title}</h3>
+              <button className="modal-close-btn" onClick={onClose}>
+                <Icon name="close" />
+              </button>
+            </div>
+            <div className="drawer-body">
+              {children}
+            </div>
+            {footerButtons && (
+              <div className="drawer-footer">
+                {footerButtons}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    // SVGs / Icons helper
+    const Icon = ({ name }) => {
+      switch (name) {
+        case 'bolt':
+          return <svg viewBox="0 0 24 24" width="20" height="20"><path d="M13 2v9h8L11 22v-9H3L13 2z"/></svg>;
+        case 'station':
+          return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>;
+        case 'point':
+          return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>;
+        case 'search':
+          return <svg viewBox="0 0 24 24" width="16" height="16"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>;
+        case 'filter':
+          return <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>;
+        case 'plus':
+          return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>;
+        case 'close':
+          return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>;
+        case 'settings':
+          return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>;
+        case 'lock':
+          return <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
+        case 'pencil':
+          return <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>;
+        case 'trash':
+          return <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>;
+        // Line Icons for Amenities picker
+        case 'wifi':
+          return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.94 0M12 20h.01"/></svg>;
+        case 'coffee':
+          return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8zM6 1v3M10 1v3M14 1v3"/></svg>;
+        case 'parking':
+          return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 17V7h4a3 3 0 0 1 0 6H9"/></svg>;
+        case 'restroom':
+          return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18v3M5 21v-3M7 18v-6M10 12h-5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2zM17 18v3M13 21v-3M15 18v-6M18 12h-5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2z"/></svg>;
+        case 'shop':
+          return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
+        case 'seating':
+          return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 18v3M20 18v3M19 12v5H5v-5M12 2v10M5 7h14"/></svg>;
+        case 'charger':
+          return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2v9h8L11 22v-9H3L13 2z"/></svg>;
+        case 'info':
+          return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>;
+        default:
+          return null;
+      }
+    };
+
+    // Sidebar
+    const Sidebar = () => {
+      const { currentRoute, navigateTo, configFocusSection } = useContext(CpoContext);
+      const isConfigActive = currentRoute === 'config';
+
+      return (
+        <div className="sidebar">
+          <div className="sidebar-logo">
+            <Icon name="bolt" />
+            <span>Shahn | Portal</span>
+          </div>
+          <div className="sidebar-nav">
+            <div 
+              className={`nav-item ${currentRoute === 'stations' || currentRoute === 'create-station' || currentRoute === 'edit-station' ? 'active' : ''}`}
+              onClick={() => navigateTo('stations')}
+            >
+              <Icon name="station" />
+              <span>Charging stations</span>
+            </div>
+            <div 
+              className={`nav-item ${currentRoute === 'points' ? 'active' : ''}`}
+              onClick={() => navigateTo('points')}
+            >
+              <Icon name="point" />
+              <span>Charging points</span>
+            </div>
+            <div>
+              <div 
+                className={`nav-item ${isConfigActive ? 'active' : ''}`}
+                onClick={() => navigateTo('config', 'all')}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <Icon name="settings" />
+                  <span>Asset configurations</span>
+                </div>
+                <span style={{ fontSize: '9px', opacity: 0.6, transform: isConfigActive ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▶</span>
+              </div>
+              
+              {isConfigActive && (
+                <div className="sidebar-submenu">
+                  <div 
+                    className={`submenu-item ${configFocusSection === 'models' ? 'active' : ''}`}
+                    onClick={() => navigateTo('config', 'models')}
+                  >
+                    <span>Charging Point Models</span>
+                  </div>
+                  <div 
+                    className={`submenu-item ${configFocusSection === 'connectors' ? 'active' : ''}`}
+                    onClick={() => navigateTo('config', 'connectors')}
+                  >
+                    <span>Connector Types</span>
+                  </div>
+                  <div 
+                    className={`submenu-item ${configFocusSection === 'amenities' ? 'active' : ''}`}
+                    onClick={() => navigateTo('config', 'amenities')}
+                  >
+                    <span>Amenities</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="sidebar-footer">
+            <div>Egypt Network (EGP)</div>
+            <div>Asset Module v1.1.0</div>
+          </div>
+        </div>
+      );
+    };
+
+    // Global Header with Permission Simulator switch
+    const Header = () => {
+      const { currentRoute, hasModelPermission, setHasModelPermission } = useContext(CpoContext);
+      let pageTitle = "Asset Management";
+      if (currentRoute === 'stations') pageTitle = "Charging Stations";
+      else if (currentRoute === 'points') pageTitle = "Charging Points Network";
+      else if (currentRoute === 'create-station') pageTitle = "Create Charging Station";
+      else if (currentRoute === 'edit-station') pageTitle = "Edit Charging Station";
+      else if (currentRoute === 'config') pageTitle = "Asset Configuration Settings";
+
+      return (
+        <div className="header">
+          <div className="header-title">
+            <h1>{pageTitle}</h1>
+          </div>
+          <div className="header-actions">
+            {/* Model Permission Toggle Simulator */}
+            <div className="permission-simulator">
+              <input 
+                type="checkbox" 
+                id="perm-toggle"
+                checked={hasModelPermission} 
+                onChange={(e) => setHasModelPermission(e.target.checked)} 
+                style={{ cursor: 'pointer' }}
+              />
+              <label htmlFor="perm-toggle" style={{ fontWeight: '500', cursor: 'pointer', userSelect: 'none' }}>
+                Simulate: Model Edit Permission
+              </label>
+            </div>
+
+            <div className="user-profile">
+              <div className="user-avatar">SL</div>
+              <div className="user-info">
+                <span className="user-name">Sherif Lotfy</span>
+                <span className="user-role">Engineering Lead</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // Searchable Dropdown Helper (extends to support add-new creation row)
+    const SearchableDropdown = ({ options, value, onChange, placeholder, required, error, onAddNew, addNewPlaceholder }) => {
+      const [isOpen, setIsOpen] = useState(false);
+      const [searchQuery, setSearchQuery] = useState('');
+      const wrapperRef = useRef(null);
+
+      useEffect(() => {
+        const handleClickOutside = (e) => {
+          if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+            setIsOpen(false);
+          }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }, []);
+
+      const filteredOptions = useMemo(() => {
+        return options.filter(opt => 
+          opt.name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      }, [options, searchQuery]);
+
+      const selectedOption = options.find(opt => opt.id === value);
+
+      return (
+        <div className="amenities-selector-wrapper" ref={wrapperRef}>
+          <div 
+            className={`input-field ${error ? 'error' : ''}`}
+            onClick={() => setIsOpen(!isOpen)}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', minHeight: '38px', background: '#fff' }}
+          >
+            <span>{selectedOption ? selectedOption.name : placeholder}</span>
+            <span style={{ fontSize: '10px', color: '#94A3B8' }}>▼</span>
+          </div>
+
+          {isOpen && (
+            <div className="options-dropdown">
+              <input
+                type="text"
+                className="input-field"
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-color)', borderRadius: '8px 8px 0 0', border: 'none' }}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div style={{ maxHeight: '160px', overflowY: 'auto' }}>
+                {filteredOptions.length === 0 ? (
+                  <div style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--text-muted)' }}>No results found</div>
+                ) : (
+                  filteredOptions.map(opt => (
+                    <div 
+                      key={opt.id}
+                      className={`option-item ${opt.id === value ? 'selected' : ''}`}
+                      onClick={() => {
+                        onChange(opt.id);
+                        setIsOpen(false);
+                        setSearchQuery('');
+                      }}
+                    >
+                      {opt.name}
+                    </div>
+                  ))
+                )}
+                
+                {/* Inline Add New option */}
+                {onAddNew && searchQuery && !options.some(o => o.name.toLowerCase() === searchQuery.toLowerCase()) && (
+                  <div 
+                    className="dropdown-add-row"
+                    onClick={() => {
+                      onAddNew(searchQuery);
+                      onChange(searchQuery);
+                      setIsOpen(false);
+                      setSearchQuery('');
+                    }}
+                  >
+                    + Add "{searchQuery}"
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // --- SCREEN 1: CHARGING STATIONS LIST ---
+    const StationsList = () => {
+      const { stations, points, navigateTo, reopenStation, deleteStation, closeStationOnApp, openStationOnApp } = useContext(CpoContext);
+      
+      const [globalSearch, setGlobalSearch] = useState('');
+      const [activeKpiFilter, setActiveKpiFilter] = useState(null); 
+      
+      const [columnFilters, setColumnFilters] = useState({
+        id: { value: '', mode: 'equals' }, 
+        name: { value: '', mode: 'equals' },
+        landlordId: { value: '', mode: 'equals' },
+        location: { value: '', mode: 'equals' },
+        status: { value: '', mode: 'equals' },
+        appStatus: { value: '', mode: 'equals' }
+      });
+      const [activeFilterPopover, setActiveFilterPopover] = useState(null); 
+      const filterWrapperRef = useRef(null);
+
+      const [activeRowMenu, setActiveRowMenu] = useState(null); 
+
+      // Modals
+      const [deleteModalStation, setDeleteModalStation] = useState(null);
+      const [closeAppModalStation, setCloseAppModalStation] = useState(null);
+
+      useEffect(() => {
+        const handleClickOutside = (e) => {
+          if (filterWrapperRef.current && !filterWrapperRef.current.contains(e.target)) {
+            setActiveFilterPopover(null);
+          }
+          if (e.target.closest('.row-menu-container') === null) {
+            setActiveRowMenu(null);
+          }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }, []);
+
+      const activeCount = useMemo(() => stations.filter(s => s.status === 'Active').length, [stations]);
+      const needsAttentionCount = useMemo(() => stations.filter(s => s.status === 'Inactive' || s.status === 'Partial Active').length, [stations]);
+      const activeSessionsCount = useMemo(() => points.filter(p => p.activeSessionNow && !p.isHistorical).length, [points]);
+
+      const uniqueColumnValues = useMemo(() => {
+        return {
+          id: [...new Set(stations.map(s => s.id))].map(v => ({ id: v, name: v })),
+          name: [...new Set(stations.map(s => s.name))].map(v => ({ id: v, name: v })),
+          landlordId: INITIAL_LANDLORDS.map(l => ({ id: l.id, name: l.name })),
+          location: [...new Set(stations.map(s => s.location))].map(v => ({ id: v, name: v })),
+          status: ['Undefined', 'Active', 'Inactive', 'Partial Active', 'Closed'].map(v => ({ id: v, name: v })),
+          appStatus: ['Open', 'Closed'].map(v => ({ id: v, name: v }))
+        };
+      }, [stations]);
+
+      const processedStations = useMemo(() => {
+        let result = [...stations];
+        if (globalSearch) {
+          const query = globalSearch.toLowerCase();
+          result = result.filter(s => {
+            const landlordName = INITIAL_LANDLORDS.find(l => l.id === s.landlordId)?.name || '';
+            return s.id.toLowerCase().includes(query) ||
+                   s.name.toLowerCase().includes(query) ||
+                   s.location.toLowerCase().includes(query) ||
+                   landlordName.toLowerCase().includes(query);
+          });
+        }
+        if (activeKpiFilter === 'Active') {
+          result = result.filter(s => s.status === 'Active');
+        } else if (activeKpiFilter === 'NeedsAttention') {
+          result = result.filter(s => s.status === 'Inactive' || s.status === 'Partial Active');
+        }
+        Object.keys(columnFilters).forEach(key => {
+          const filter = columnFilters[key];
+          if (filter.value) {
+            result = result.filter(s => {
+              const matches = s[key] === filter.value;
+              return filter.mode === 'equals' ? matches : !matches;
+            });
+          }
+        });
+        return result.sort((a, b) => {
+          if (a.isDeleted && !b.isDeleted) return 1;
+          if (!a.isDeleted && b.isDeleted) return -1;
+          const SORT_ORDER = { 'Inactive': 0, 'Partial Active': 1, 'Undefined': 2, 'Active': 3, 'Closed': 4 };
+          return SORT_ORDER[a.status] - SORT_ORDER[b.status];
+        });
+      }, [stations, globalSearch, activeKpiFilter, columnFilters]);
+
+      const [currentPage, setCurrentPage] = useState(1);
+      const rowsPerPage = 20;
+      const totalPages = Math.ceil(processedStations.length / rowsPerPage) || 1;
+      const paginatedStations = useMemo(() => {
+        return processedStations.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+      }, [processedStations, currentPage]);
+
+      const clearAllFilters = () => {
+        setGlobalSearch('');
+        setActiveKpiFilter(null);
+        setColumnFilters({
+          id: { value: '', mode: 'equals' },
+          name: { value: '', mode: 'equals' },
+          landlordId: { value: '', mode: 'equals' },
+          location: { value: '', mode: 'equals' },
+          status: { value: '', mode: 'equals' },
+          appStatus: { value: '', mode: 'equals' }
+        });
+      };
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* KPI Dashboard */}
+          <div className="kpi-container">
+            <div className={`kpi-card clickable ${activeKpiFilter === 'Active' ? 'active-filter' : ''}`} onClick={() => setActiveKpiFilter(activeKpiFilter === 'Active' ? null : 'Active')}>
+              <div className="kpi-title">Active Stations</div>
+              <div className="kpi-value">{activeCount}</div>
+              <div className="kpi-subtitle">Showing all live charging hubs</div>
+            </div>
+            <div className={`kpi-card clickable ${activeKpiFilter === 'NeedsAttention' ? 'active-filter' : ''}`} onClick={() => setActiveKpiFilter(activeKpiFilter === 'NeedsAttention' ? null : 'NeedsAttention')}>
+              <div className="kpi-title">Needs Attention</div>
+              <div className="kpi-value">{needsAttentionCount}</div>
+              <div className="kpi-subtitle">Inactive or Partial Active points</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-title">Active Charging Sessions</div>
+              <div className="kpi-value" style={{ color: 'var(--primary)' }}>{activeSessionsCount}</div>
+              <div className="kpi-subtitle">Network-wide active sessions</div>
+            </div>
+          </div>
+
+          {/* Toolbar */}
+          <div className="toolbar">
+            <div className="toolbar-left">
+              <div className="search-input-wrapper">
+                <Icon name="search" />
+                <input type="text" className="search-input" placeholder="Global search ID, name, location..." value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)} />
+              </div>
+              {(globalSearch || activeKpiFilter || Object.values(columnFilters).some(f => f.value)) && (
+                <span className="clear-filters" onClick={clearAllFilters}>Clear all filters</span>
+              )}
+            </div>
+            <div className="toolbar-right">
+              <button className="btn btn-primary" onClick={() => navigateTo('create-station')}>
+                <Icon name="plus" />
+                <span>Create station</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="table-container">
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    {['id', 'name', 'landlordId', 'location', 'status', 'appStatus'].map(colKey => {
+                      const label = { id: 'Station ID', name: 'Station Name', landlordId: 'Landlord', location: 'Location', status: 'Connection Status', appStatus: 'App Status' }[colKey];
+                      const isFilterActive = columnFilters[colKey].value !== '';
+                      return (
+                        <th key={colKey}>
+                          <div className="column-header-content">
+                            <span>{label}</span>
+                            <div className="column-filter-popover" ref={activeFilterPopover === colKey ? filterWrapperRef : null}>
+                              <button className={`filter-trigger-btn ${isFilterActive ? 'active' : ''}`} onClick={() => setActiveFilterPopover(activeFilterPopover === colKey ? null : colKey)}>
+                                <Icon name="filter" />
+                              </button>
+                              {activeFilterPopover === colKey && (
+                                <div className="filter-dropdown">
+                                  <div className="filter-toggle-mode">
+                                    <button className={`filter-toggle-btn ${columnFilters[colKey].mode === 'equals' ? 'active' : ''}`} onClick={() => setColumnFilters({ ...columnFilters, [colKey]: { ...columnFilters[colKey], mode: 'equals' } })}>EQUALS</button>
+                                    <button className={`filter-toggle-btn ${columnFilters[colKey].mode === 'not_equals' ? 'active' : ''}`} onClick={() => setColumnFilters({ ...columnFilters, [colKey]: { ...columnFilters[colKey], mode: 'not_equals' } })}>NOT EQUAL</button>
+                                  </div>
+                                  <select className="filter-select" value={columnFilters[colKey].value} onChange={(e) => setColumnFilters({ ...columnFilters, [colKey]: { ...columnFilters[colKey], value: e.target.value } })}>
+                                    <option value="">Select Value...</option>
+                                    {uniqueColumnValues[colKey].map(opt => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
+                                  </select>
+                                  <div className="filter-actions"><span className="clear-filters" style={{ fontSize: '12px' }} onClick={() => setColumnFilters({ ...columnFilters, [colKey]: { value: '', mode: 'equals' } })}>Clear</span></div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </th>
+                      );
+                    })}
+                    <th>Create Date</th>
+                    <th>Revenue (30d)</th>
+                    <th>Sessions (30d)</th>
+                    <th style={{ width: '50px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedStations.length === 0 ? (
+                    <tr><td colSpan="10" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>No stations found.</td></tr>
+                  ) : (
+                    paginatedStations.map(s => (
+                      <tr key={s.id} className={s.isDeleted ? 'row-deleted' : ''}>
+                        <td><strong>{s.id}</strong></td>
+                        <td>{s.name}</td>
+                        <td>{INITIAL_LANDLORDS.find(l => l.id === s.landlordId)?.name || s.landlordId}</td>
+                        <td>{s.location}</td>
+                        <td><StatusBadge status={s.status} deleted={s.isDeleted} /></td>
+                        <td>
+                          <div className={`table-toggle-switch ${(s.appStatus === 'Closed' || s.status === 'Undefined' || s.status === 'Inactive') ? 'inactive' : 'active'}`}
+                               onClick={() => {
+                                 if (s.status === 'Undefined' || s.status === 'Inactive') {
+                                   alert("Station is not connected");
+                                   return;
+                                 }
+                                 if (s.appStatus === 'Closed') {
+                                   openStationOnApp(s.id);
+                                 } else {
+                                   setCloseAppModalStation(s);
+                                 }
+                               }}
+                               style={{ 
+                                 display: 'flex', 
+                                 alignItems: 'center', 
+                                 gap: '8px', 
+                                 cursor: (s.status === 'Undefined' || s.status === 'Inactive') ? 'not-allowed' : 'pointer', 
+                                 userSelect: 'none',
+                                 opacity: (s.status === 'Undefined' || s.status === 'Inactive') ? 0.6 : 1
+                               }}>
+                            <div className="toggle-track" style={{
+                              width: '36px',
+                              height: '20px',
+                              backgroundColor: (s.appStatus === 'Closed' || s.status === 'Undefined' || s.status === 'Inactive') ? '#CBD5E0' : 'var(--primary)',
+                              borderRadius: '10px',
+                              position: 'relative',
+                              transition: 'background-color 0.2s'
+                            }}>
+                              <div className="toggle-thumb" style={{
+                                width: '16px',
+                                height: '16px',
+                                backgroundColor: 'white',
+                                borderRadius: '50%',
+                                position: 'absolute',
+                                top: '2px',
+                                left: (s.appStatus === 'Closed' || s.status === 'Undefined' || s.status === 'Inactive') ? '2px' : '18px',
+                                transition: 'left 0.2s',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                              }}></div>
+                            </div>
+                            <span style={{ fontSize: '12px', fontWeight: '500', color: (s.appStatus === 'Closed' || s.status === 'Undefined' || s.status === 'Inactive') ? '#718096' : 'var(--primary)' }}>
+                              {(s.appStatus === 'Closed' || s.status === 'Undefined' || s.status === 'Inactive') ? 'Deactive' : 'Active'}
+                            </span>
+                          </div>
+                        </td>
+                        <td>{s.createDate}</td>
+                        <td>{s.revenue30.toLocaleString('en-EG', { style: 'currency', currency: 'EGP' })}</td>
+                        <td>{s.sessions30}</td>
+                        <td>
+                          <div className="row-menu-container">
+                            <button className="row-actions-btn" onClick={() => setActiveRowMenu(activeRowMenu === s.id ? null : s.id)}>⋮</button>
+                            {activeRowMenu === s.id && (
+                              <div className="row-menu-dropdown">
+                                <button className="row-menu-item" onClick={() => alert(`Details of ${s.name}`)}>View</button>
+                                {!s.isDeleted && <button className="row-menu-item" onClick={() => navigateTo('edit-station', s.id)}>Edit</button>}
+                                <button className="row-menu-item" onClick={() => alert(`Transactions for ${s.id}`)}>View transactions</button>
+                                <button className="row-menu-item" onClick={() => alert(`Payments for ${s.id}`)}>View payments</button>
+                                {!s.isDeleted && (
+                                  <button className="row-menu-item danger" onClick={() => { setDeleteModalStation(s); setActiveRowMenu(null); }}>Delete</button>
+                                )}
+                                {s.status === 'Closed' && (
+                                  <button className="row-menu-item" style={{ color: 'var(--primary)' }} onClick={() => { reopenStation(s.id); setActiveRowMenu(null); }}>Reopen</button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="pagination">
+              <span>Showing Page {currentPage} of {totalPages} ({processedStations.length} total)</span>
+              <div className="pagination-buttons">
+                <button className="btn btn-secondary" disabled={currentPage === 1} onClick={() => setCurrentPage(currentPage - 1)} style={{ padding: '6px 12px' }}>Previous</button>
+                <button className="btn btn-secondary" disabled={currentPage === totalPages} onClick={() => setCurrentPage(currentPage + 1)} style={{ padding: '6px 12px' }}>Next</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Delete Modal */}
+          <Modal
+            isOpen={deleteModalStation !== null}
+            onClose={() => setDeleteModalStation(null)}
+            title={deleteModalStation?.status === 'Undefined' ? `Permanently Delete Station: ${deleteModalStation?.name}` : `Delete Station: ${deleteModalStation?.name}`}
+            footerButtons={
+              <>
+                <button className="btn btn-secondary" onClick={() => setDeleteModalStation(null)}>Cancel</button>
+                <button className="btn btn-danger" onClick={() => { deleteStation(deleteModalStation.id); setDeleteModalStation(null); }}>Delete</button>
+              </>
+            }
+          >
+            {deleteModalStation?.status === 'Undefined' ? (
+              <>
+                <p style={{ color: '#EF4444', fontWeight: '600' }}>⚠️ WARNING: PERMANENT ACTION</p>
+                <p>Are you sure you want to permanently delete station <strong>{deleteModalStation?.name}</strong>? This station is Undefined and will be completely removed from the system.</p>
+              </>
+            ) : (
+              <>
+                <p style={{ color: '#EF4444', fontWeight: '600' }}>⚠️ WARNING: SOFT DELETION</p>
+                <p>Are you sure you want to delete station <strong>{deleteModalStation?.name}</strong>? Both its system status and mobile app status will be marked as <strong>Deleted</strong>.</p>
+              </>
+            )}
+          </Modal>
+
+          {/* Close App Modal */}
+          <Modal
+            isOpen={closeAppModalStation !== null}
+            onClose={() => setCloseAppModalStation(null)}
+            title={`Close Station on App: ${closeAppModalStation?.name}`}
+            footerButtons={
+              <>
+                <button className="btn btn-secondary" onClick={() => setCloseAppModalStation(null)}>Cancel</button>
+                <button className="btn btn-danger" onClick={() => { closeStationOnApp(closeAppModalStation.id); setCloseAppModalStation(null); }}>Confirm</button>
+              </>
+            }
+          >
+            <p style={{ color: 'var(--primary)', fontWeight: '600' }}>⚠️ Close Station on Customer App</p>
+            <p>Are you sure you want to close station <strong>{closeAppModalStation?.name}</strong>? The station will be closed and users won't be able to view it on the app. The connection status will remain unchanged.</p>
+            {closeAppModalStation && (() => {
+              const targetPoints = points.filter(p => p.stationId === closeAppModalStation.id && !p.isHistorical && !p.isDeleted);
+              if (targetPoints.length > 0) {
+                return (
+                  <div style={{ marginTop: '12px', padding: '10px', background: '#FFF5F5', border: '1px solid #FEB2B2', borderRadius: '6px', fontSize: '13px' }}>
+                    <strong>Affected Charging Points (to be closed):</strong> {targetPoints.map(p => p.id).join(', ')}
+                  </div>
+                );
+              }
+              return null;
+            })()}
+          </Modal>
+        </div>
+      );
+    };
+
+    // --- SCREEN 2: CREATE STATION WIZARD ---
+    const CreateStationWizard = () => {
+      const { addStation, points, models, amenities, navigateTo } = useContext(CpoContext);
+      const [step, setStep] = useState(1);
+
+      const [stationBasics, setStationBasics] = useState({ name: '', address: '', description: '', landlord: '', amenities: [], tariffId: '' });
+      const [basicsErrors, setBasicsErrors] = useState({});
+
+      const [blocks, setBlocks] = useState([{ id: Date.now(), modelId: '', tariffMode: 'station', tariffId: '', connectorTariffs: [], pointCount: 1, pointIds: [''], communityId: '' }]);
+      const [blockErrors, setBlockErrors] = useState({});
+
+      const [amenitySearch, setAmenitySearch] = useState('');
+      const [amenityDropdownOpen, setAmenityDropdownOpen] = useState(false);
+      const amenityWrapperRef = useRef(null);
+
+      useEffect(() => {
+        const handleClickOutside = (e) => {
+          if (amenityWrapperRef.current && !amenityWrapperRef.current.contains(e.target)) setAmenityDropdownOpen(false);
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }, []);
+
+      const totals = useMemo(() => {
+        let totalBlocks = blocks.length;
+        let totalPoints = blocks.reduce((acc, curr) => acc + (parseInt(curr.pointCount) || 0), 0);
+        return { totalBlocks, totalPoints };
+      }, [blocks]);
+
+      const validateStep1 = () => {
+        const errors = {};
+        if (!stationBasics.name.trim()) errors.name = "Name is required.";
+        if (!stationBasics.landlord) errors.landlord = "Landlord is required.";
+        setBasicsErrors(errors);
+        return Object.keys(errors).length === 0;
+      };
+
+      const validateStep2 = () => {
+        const errors = {};
+        let isValid = true;
+        const existingPointIds = points.map(p => p.id.toLowerCase());
+        const typedPointIds = [];
+
+        blocks.forEach((block) => {
+          const blockErrs = {};
+          if (!block.modelId) {
+            blockErrs.modelId = "Required.";
+            isValid = false;
+          }
+          if (block.modelId) {
+            if (block.tariffMode === 'point') {
+              if (!block.tariffId) { blockErrs.tariffId = "Required."; isValid = false; }
+            } else if (block.tariffMode === 'connector') {
+              const model = models.find(m => m.id === block.modelId);
+              const connErrs = [];
+              model?.connectorTypes.forEach((conn, cidx) => {
+                const assigned = block.connectorTariffs.find(ct => ct.label === conn.label);
+                if (!assigned?.tariffId) { connErrs[cidx] = "Required."; isValid = false; }
+              });
+              if (connErrs.length > 0) blockErrs.connectorTariffs = connErrs;
+            }
+          }
+
+          const pidErrs = [];
+          block.pointIds.forEach((pid, pidx) => {
+            const clean = pid.trim();
+            if (!clean) { pidErrs[pidx] = "Required."; isValid = false; }
+            else if (existingPointIds.includes(clean.toLowerCase())) { pidErrs[pidx] = "Already exists."; isValid = false; }
+            else if (typedPointIds.includes(clean.toLowerCase())) { pidErrs[pidx] = "Duplicate."; isValid = false; }
+            else typedPointIds.push(clean.toLowerCase());
+          });
+          if (pidErrs.some(e => e)) blockErrs.pointIds = pidErrs;
+          if (Object.keys(blockErrs).length > 0) errors[block.id] = blockErrs;
+        });
+
+        setBlockErrors(errors);
+        return isValid && totals.totalPoints > 0;
+      };
+
+      const handleNext = () => {
+        if (step === 1 && validateStep1()) setStep(2);
+        else if (step === 2 && validateStep2()) setStep(3);
+      };
+
+      const updateBlockField = (id, field, value) => {
+        setBlocks(blocks.map(b => {
+          if (b.id === id) {
+            const updated = { ...b, [field]: value };
+            if (field === 'modelId') {
+              const model = models.find(m => m.id === value);
+              updated.connectorTariffs = model ? model.connectorTypes.map(c => ({ label: c.label, tariffId: '' })) : [];
+            }
+            if (field === 'pointCount') {
+              const count = Math.max(1, parseInt(value) || 1);
+              updated.pointCount = count;
+              const newIds = [...b.pointIds];
+              while (newIds.length < count) newIds.push('');
+              newIds.splice(count);
+              updated.pointIds = newIds;
+            }
+            return updated;
+          }
+          return b;
+        }));
+      };
+
+      const [successStationId, setSuccessStationId] = useState(null);
+
+      return (
+        <div className="wizard-container">
+          <div className="wizard-header">
+            <h2>Create Charging Station</h2>
+            {step < 4 && (
+              <div className="step-indicator">
+                <div className={`step-indicator-node ${step === 1 ? 'active' : ''} ${step > 1 ? 'completed' : ''}`} onClick={() => step > 1 && setStep(1)}>
+                  <div className="step-dot">{step > 1 ? '✓' : '1'}</div>
+                  <span className="step-label">Basics</span>
+                </div>
+                <div className="step-connector"></div>
+                <div className={`step-indicator-node ${step === 2 ? 'active' : ''} ${step > 2 ? 'completed' : ''}`} onClick={() => step > 2 && setStep(2)}>
+                  <div className="step-dot">{step > 2 ? '✓' : '2'}</div>
+                  <span className="step-label">Points</span>
+                </div>
+                <div className="step-connector"></div>
+                <div className={`step-indicator-node ${step === 3 ? 'active' : ''}`}>
+                  <div className="step-dot">3</div>
+                  <span className="step-label">Review</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="wizard-body">
+            {step === 1 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div className="form-group-row">
+                  <div className="form-group">
+                    <label className="form-label">Station Name <span>*</span></label>
+                    <input type="text" className={`input-field ${basicsErrors.name ? 'error' : ''}`} value={stationBasics.name} onChange={(e) => setStationBasics({ ...stationBasics, name: e.target.value })} />
+                    {basicsErrors.name && <div className="error-text">{basicsErrors.name}</div>}
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Landlord <span>*</span></label>
+                    <SearchableDropdown options={INITIAL_LANDLORDS} value={stationBasics.landlord} onChange={(val) => setStationBasics({ ...stationBasics, landlord: val })} placeholder="Select Landlord..." error={basicsErrors.landlord} />
+                    {basicsErrors.landlord && <div className="error-text">{basicsErrors.landlord}</div>}
+                  </div>
+                </div>
+                 <div className="form-group-row">
+                  <div className="form-group">
+                    <label className="form-label">Station Tariff (Station-Level Tariff)</label>
+                    <SearchableDropdown options={INITIAL_TARIFFS} value={stationBasics.tariffId} onChange={(val) => setStationBasics({ ...stationBasics, tariffId: val })} placeholder="Select Station-Level Tariff (Optional)..." />
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>Applies to all points and connectors unless overridden at Point/Connector level.</span>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Address</label>
+                    <input type="text" className="input-field" value={stationBasics.address} onChange={(e) => setStationBasics({ ...stationBasics, address: e.target.value })} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Description</label>
+                  <textarea className="input-field" rows="3" value={stationBasics.description} onChange={(e) => setStationBasics({ ...stationBasics, description: e.target.value })} />
+                </div>
+
+                {/* Amenities Selection using dyn state */}
+                <div className="form-group amenities-selector-wrapper" ref={amenityWrapperRef}>
+                  <label className="form-label">Amenities</label>
+                  <div className="chips-container" onClick={() => setAmenityDropdownOpen(true)}>
+                    {stationBasics.amenities.length === 0 ? <span style={{ color: 'var(--text-muted)', fontSize: '13.5px' }}>Select Amenity...</span> : (
+                      stationBasics.amenities.map(chip => (
+                        <span key={chip} className="chip">
+                          {chip}
+                          <span className="chip-remove" onClick={(e) => { e.stopPropagation(); setStationBasics({ ...stationBasics, amenities: [] }); }}>×</span>
+                        </span>
+                      ))
+                    )}
+                  </div>
+                  {amenityDropdownOpen && (
+                    <div className="options-dropdown">
+                      <input type="text" className="input-field" placeholder="Search..." value={amenitySearch} onChange={(e) => setAmenitySearch(e.target.value)} onClick={e => e.stopPropagation()} />
+                      <div style={{ maxHeight: '160px', overflowY: 'auto' }}>
+                        {amenities.filter(a => a.name.toLowerCase().includes(amenitySearch.toLowerCase())).map(amenity => {
+                          const sel = stationBasics.amenities.includes(amenity.name);
+                          return (
+                            <div key={amenity.id} className={`option-item ${sel ? 'selected' : ''}`} onClick={() => {
+                              setStationBasics({ ...stationBasics, amenities: sel ? [] : [amenity.name] });
+                              setAmenityDropdownOpen(false);
+                            }}>
+                              <span>{amenity.name}</span>
+                              {sel && <span>✓</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {blocks.map((block, idx) => {
+                  const errs = blockErrors[block.id] || {};
+                  const selectedModel = models.find(m => m.id === block.modelId);
+                  return (
+                    <div key={block.id} className="repeater-block">
+                      <div className="repeater-block-header">
+                        <span>Block #{idx + 1}</span>
+                        {blocks.length > 1 && <button className="repeater-block-remove" onClick={() => setBlocks(blocks.filter(b => b.id !== block.id))}>Remove</button>}
+                      </div>
+                      <div className="form-group-row">
+                        <div className="form-group">
+                          <label className="form-label">Model <span>*</span></label>
+                          <SearchableDropdown options={models} value={block.modelId} onChange={(val) => updateBlockField(block.id, 'modelId', val)} placeholder="Select Model..." error={errs.modelId} />
+                          {errs.modelId && <div className="error-text">{errs.modelId}</div>}
+                          {selectedModel && (
+                            <div className="spec-chips">
+                              {selectedModel.connectorTypes.map((c, cidx) => <span key={cidx} className={`spec-chip ${c.kind === 'DC' ? 'dc' : ''}`}>{c.label} ({c.power})</span>)}
+                            </div>
+                          )}
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Community</label>
+                          <SearchableDropdown options={INITIAL_COMMUNITIES} value={block.communityId} onChange={(val) => updateBlockField(block.id, 'communityId', val)} placeholder="Select Community..." />
+                        </div>
+                      </div>
+
+                      {selectedModel && (
+                        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                            <label className="form-label">Tariff Assignment Level <span>*</span></label>
+                            <div className="filter-toggle-mode" style={{ width: '400px', display: 'flex' }}>
+                              <button className={`filter-toggle-btn ${block.tariffMode === 'station' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => updateBlockField(block.id, 'tariffMode', 'station')}>Station Level</button>
+                              <button className={`filter-toggle-btn ${block.tariffMode === 'point' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => updateBlockField(block.id, 'tariffMode', 'point')}>Point Level</button>
+                              {selectedModel.connectorTypes.length > 1 && (
+                                <button className={`filter-toggle-btn ${block.tariffMode === 'connector' ? 'active' : ''}`} style={{ flex: 1 }} onClick={() => updateBlockField(block.id, 'tariffMode', 'connector')}>Connector Level</button>
+                              )}
+                            </div>
+                          </div>
+
+                          {block.tariffMode === 'station' && (
+                            <div className="warning-banner" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', display: 'flex', gap: '8px', alignItems: 'center', padding: '12px', borderRadius: '6px', marginBottom: '8px' }}>
+                              <span style={{ fontSize: '16px' }}>ℹ️</span>
+                              <div>
+                                <strong>Inherited Station Tariff:</strong> {stationBasics.tariffId ? (INITIAL_TARIFFS.find(t => t.id === stationBasics.tariffId)?.name || stationBasics.tariffId) : <span style={{ color: '#ef4444', fontWeight: '500' }}>No Station Tariff Assigned (Default: Free / Unassigned)</span>}
+                              </div>
+                            </div>
+                          )}
+
+                          {block.tariffMode === 'point' && (
+                            <div className="form-group">
+                              <label className="form-label">Point Tariff <span>*</span></label>
+                              <SearchableDropdown options={INITIAL_TARIFFS} value={block.tariffId} onChange={(val) => updateBlockField(block.id, 'tariffId', val)} placeholder="Select Point-Level Tariff..." error={errs.tariffId} />
+                              {errs.tariffId && <div className="error-text">{errs.tariffId}</div>}
+                            </div>
+                          )}
+
+                          {block.tariffMode === 'connector' && (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                              {selectedModel.connectorTypes.map((conn, cidx) => {
+                                const val = block.connectorTariffs.find(ct => ct.label === conn.label)?.tariffId || '';
+                                const cErr = errs.connectorTariffs?.[cidx];
+                                return (
+                                  <div className="form-group" key={cidx}>
+                                    <label className="form-label">{conn.label} Tariff <span>*</span></label>
+                                    <SearchableDropdown options={INITIAL_TARIFFS} value={val} onChange={(tval) => {
+                                      const updated = [...block.connectorTariffs];
+                                      const existIdx = updated.findIndex(u => u.label === conn.label);
+                                      if (existIdx > -1) updated[existIdx].tariffId = tval;
+                                      else updated.push({ label: conn.label, tariffId: tval });
+                                      updateBlockField(block.id, 'connectorTariffs', updated);
+                                    }} placeholder="Select Tariff..." error={cErr} />
+                                    {cErr && <div className="error-text">{cErr}</div>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div className="form-group" style={{ width: '200px' }}>
+                          <label className="form-label">Point Count</label>
+                          <input type="number" className="input-field" min="1" value={block.pointCount} onChange={(e) => updateBlockField(block.id, 'pointCount', e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Point IDs <span>*</span></label>
+                          <div className="ids-grid">
+                            {block.pointIds.map((pid, pidx) => {
+                              const err = errs.pointIds?.[pidx];
+                              return (
+                                <div key={pidx}>
+                                  <input type="text" className={`input-field ${err ? 'error' : ''}`} placeholder={`Point ID #${pidx + 1}`} value={pid} onChange={(e) => {
+                                    const updated = [...block.pointIds];
+                                    updated[pidx] = e.target.value;
+                                    updateBlockField(block.id, 'pointIds', updated);
+                                  }} />
+                                  {err && <div className="error-text">{err}</div>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <button className="btn btn-secondary" onClick={() => setBlocks([...blocks, { id: Date.now(), modelId: '', tariffMode: 'station', tariffId: '', connectorTariffs: [], pointCount: 1, pointIds: [''], communityId: '' }])} style={{ alignSelf: 'flex-start' }}>+ Add Block</button>
+                <div className="summary-footer">
+                  <span>Summary Running Total:</span>
+                  <span>{totals.totalBlocks} Blocks — {totals.totalPoints} Points</span>
+                </div>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="review-section">
+                <div className="review-card">
+                  <div className="review-card-title">Station Info — Will be Undefined</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr', gap: '16px', marginTop: '8px' }}>
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Name</div>
+                      <div className="review-card-value">{stationBasics.name}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Landlord</div>
+                      <div className="review-card-value">{INITIAL_LANDLORDS.find(l => l.id === stationBasics.landlord)?.name}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Location</div>
+                      <div className="review-card-value">{stationBasics.address || '—'}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Station Tariff</div>
+                      <div className="review-card-value">{INITIAL_TARIFFS.find(t => t.id === stationBasics.tariffId)?.name || <span style={{ color: 'var(--text-muted)' }}>None (Free)</span>}</div>
+                    </div>
+                  </div>
+                  {stationBasics.amenities.length > 0 && (
+                    <div style={{ marginTop: '12px' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Amenities</div>
+                      <div className="spec-chips">{stationBasics.amenities.map(a => <span key={a} className="spec-chip">{a}</span>)}</div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="review-blocks">
+                  <div className="review-card-title">Chargers configuration</div>
+                  {blocks.map((block, idx) => {
+                    const modelObj = models.find(m => m.id === block.modelId);
+                    let blockTariffStr = 'Station Level';
+                    if (block.tariffMode === 'point') {
+                      blockTariffStr = `Point Level: ${INITIAL_TARIFFS.find(t => t.id === block.tariffId)?.name || block.tariffId}`;
+                    } else if (block.tariffMode === 'connector') {
+                      blockTariffStr = `Connector Level: ${block.connectorTariffs.map(ct => `${ct.label}: ${INITIAL_TARIFFS.find(t => t.id === ct.tariffId)?.name || ct.tariffId}`).join(', ')}`;
+                    }
+                    return (
+                      <div key={block.id} className="review-block-item">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '600' }}>
+                          <span>Block #{idx + 1} — {modelObj?.name}</span>
+                          <span>{block.pointCount} Points</span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                          Tariff Level: <strong>{blockTariffStr}</strong>
+                        </div>
+                        <div className="spec-chips" style={{ marginTop: '6px' }}>
+                          {block.pointIds.map(pid => <span key={pid} className="spec-chip dc">{pid}</span>)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {step === 4 && (
+              <div className="success-screen">
+                <div className="success-icon-wrapper"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+                <h3>Station Successfully Initialized</h3>
+                <p>Station <strong>{successStationId}</strong> has been registered with status <StatusBadge status="Undefined" />.</p>
+                <div className="success-actions">
+                  <button className="btn btn-secondary" onClick={() => {
+                    setStationBasics({ name: '', address: '', description: '', landlord: '', amenities: [], tariffId: '' });
+                    setBlocks([{ id: Date.now(), modelId: '', tariffMode: 'station', tariffId: '', connectorTariffs: [], pointCount: 1, pointIds: [''], communityId: '' }]);
+                    setStep(1);
+                  }}>Create another</button>
+                  <button className="btn btn-primary" onClick={() => navigateTo('stations')}>Back to station list</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {step < 4 && (
+            <div className="wizard-footer">
+              <button className="btn btn-secondary" disabled={step === 1} onClick={() => setStep(step - 1)}>Back</button>
+              {step < 3 ? <button className="btn btn-primary" onClick={handleNext}>Next</button> : (
+                <button className="btn btn-primary" onClick={() => {
+                  const newId = addStation(stationBasics, blocks);
+                  setSuccessStationId(newId);
+                  setStep(4);
+                }}>Submit</button>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // --- SCREEN 3: EDIT STATION WIZARD (2-STEP) ---
+    const EditStationWizard = () => {
+      const { editingStationId, stations, points, models, amenities, updateStation, navigateTo } = useContext(CpoContext);
+      const [step, setStep] = useState(1);
+
+      const station = useMemo(() => stations.find(s => s.id === editingStationId), [stations, editingStationId]);
+
+      const [stationDetails, setStationDetails] = useState({ name: '', address: '', description: '', landlord: '', amenity: '' });
+      const [chargers, setChargers] = useState([]);
+      const [formErrors, setFormErrors] = useState({});
+
+      useEffect(() => {
+        if (station) {
+          setStationDetails({
+            name: station.name,
+            address: station.location,
+            description: station.description,
+            landlord: station.landlordId,
+            amenity: station.amenities[0] || ''
+          });
+
+          const stationPoints = points.filter(p => p.stationId === station.id && !p.isHistorical);
+          setChargers(stationPoints.map(p => ({
+            id: p.id,
+            name: p.name,
+            modelId: p.modelId,
+            tariffMode: p.tariffId ? 'same' : 'per-connector',
+            tariffId: p.tariffId || '',
+            connectorTariffs: p.connectorTariffs || [],
+            communityId: p.communityId || '',
+            isEditingInline: false,
+            pendingReassignTo: null,
+            isNew: false
+          })));
+        }
+      }, [station, points]);
+
+      const [reassignIndex, setReassignIndex] = useState(null);
+      const [reassignStationId, setReassignStationId] = useState('');
+
+      const [addPointModelId, setAddPointModelId] = useState('');
+      const [addPointCount, setAddPointCount] = useState(1);
+      const [addPointTariffMode, setAddPointTariffMode] = useState('same');
+      const [addPointTariffId, setAddPointTariffId] = useState('');
+      const [addPointConnectorTariffs, setAddPointConnectorTariffs] = useState([]);
+      const [addPointCommunityId, setAddPointCommunityId] = useState('');
+      const [addPointErrors, setAddPointErrors] = useState({});
+
+      const handleAddPointModelChange = (val) => {
+        setAddPointModelId(val);
+        const model = models.find(m => m.id === val);
+        setAddPointConnectorTariffs(model ? model.connectorTypes.map(c => ({ label: c.label, tariffId: '' })) : []);
+      };
+
+      const handleAddPointSubmit = () => {
+        const errs = {};
+        if (!addPointModelId) errs.modelId = "Required.";
+        if (addPointModelId) {
+          if (addPointTariffMode === 'same') {
+            if (!addPointTariffId) errs.tariffId = "Required.";
+          } else {
+            const model = models.find(m => m.id === addPointModelId);
+            const connErrs = [];
+            model?.connectorTypes.forEach((c, idx) => {
+              if (!addPointConnectorTariffs[idx]?.tariffId) connErrs[idx] = "Required.";
+            });
+            if (connErrs.length > 0) errs.connectorTariffs = connErrs;
+          }
+        }
+
+        if (Object.keys(errs).length > 0) {
+          setAddPointErrors(errs);
+          return;
+        }
+
+        const modelObj = models.find(m => m.id === addPointModelId);
+        const newPoints = [];
+        for (let i = 0; i < addPointCount; i++) {
+          newPoints.push({
+            id: `PENDING-AUTO-${Math.random()}`,
+            name: `${modelObj.name} — Point ${chargers.length + i + 1}`,
+            modelId: addPointModelId,
+            tariffMode: addPointTariffMode,
+            tariffId: addPointTariffId,
+            connectorTariffs: addPointConnectorTariffs,
+            communityId: addPointCommunityId,
+            isEditingInline: false,
+            pendingReassignTo: null,
+            isNew: true
+          });
+        }
+
+        setChargers([...chargers, ...newPoints]);
+        setAddPointModelId('');
+        setAddPointCount(1);
+        setAddPointTariffMode('same');
+        setAddPointTariffId('');
+        setAddPointCommunityId('');
+        setAddPointConnectorTariffs([]);
+        setAddPointErrors({});
+      };
+
+      const updateChargerField = (idx, field, value) => {
+        setChargers(chargers.map((c, i) => {
+          if (i === idx) {
+            const updated = { ...c, [field]: value };
+            if (field === 'modelId') {
+              const model = models.find(m => m.id === value);
+              updated.connectorTariffs = model ? model.connectorTypes.map(conn => ({ label: conn.label, tariffId: '' })) : [];
+            }
+            return updated;
+          }
+          return c;
+        }));
+      };
+
+      const handleSave = () => {
+        let isValid = true;
+        const errors = {};
+
+        chargers.forEach((c, idx) => {
+          const cErrs = {};
+          if (c.tariffMode === 'same') {
+            if (!c.tariffId) { cErrs.tariffId = "Required."; isValid = false; }
+          } else {
+            const model = models.find(m => m.id === c.modelId);
+            const connErrs = [];
+            model?.connectorTypes.forEach((conn, connIdx) => {
+              const assigned = c.connectorTariffs.find(ct => ct.label === conn.label);
+              if (!assigned?.tariffId) { connErrs[connIdx] = "Required."; isValid = false; }
+            });
+            if (connErrs.length > 0) cErrs.connectorTariffs = connErrs;
+          }
+          if (Object.keys(cErrs).length > 0) errors[idx] = cErrs;
+        });
+
+        if (!isValid) {
+          setFormErrors(errors);
+          alert("Fill all required tariffs before saving.");
+          return;
+        }
+
+        updateStation(editingStationId, stationDetails, chargers);
+        navigateTo('stations');
+      };
+
+      if (!station) return <div>Loading...</div>;
+
+      return (
+        <div className="wizard-container">
+          <div className="wizard-header">
+            <h2>Edit Station: {station.id}</h2>
+            <div className="step-indicator">
+              <div className={`step-indicator-node ${step === 1 ? 'active' : ''}`} onClick={() => setStep(1)}><div className="step-dot">1</div><span className="step-label">Basics</span></div>
+              <div className="step-connector"></div>
+              <div className={`step-indicator-node ${step === 2 ? 'active' : ''}`} onClick={() => setStep(2)}><div className="step-dot">2</div><span className="step-label">Chargers</span></div>
+            </div>
+          </div>
+
+          <div className="wizard-body">
+            {step === 1 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div className="form-group-row">
+                  <div className="form-group">
+                    <label className="form-label">Station ID</label>
+                    <input type="text" className="input-field" value={station.id} readOnly style={{ backgroundColor: '#F1F5F9' }} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Station Name</label>
+                    <input type="text" className="input-field" value={stationDetails.name} onChange={(e) => setStationDetails({ ...stationDetails, name: e.target.value })} />
+                  </div>
+                </div>
+                <div className="form-group-row">
+                  <div className="form-group">
+                    <label className="form-label">Landlord</label>
+                    <SearchableDropdown options={INITIAL_LANDLORDS} value={stationDetails.landlord} onChange={(val) => setStationDetails({ ...stationDetails, landlord: val })} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Primary Amenity (Single Select)</label>
+                    <SearchableDropdown options={amenities.map(a => ({ id: a.name, name: a.name }))} value={stationDetails.amenity} onChange={(val) => setStationDetails({ ...stationDetails, amenity: val })} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Address</label>
+                  <input type="text" className="input-field" value={stationDetails.address} onChange={(e) => setStationDetails({ ...stationDetails, address: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Description</label>
+                  <textarea className="input-field" rows="3" value={stationDetails.description} onChange={(e) => setStationDetails({ ...stationDetails, description: e.target.value })} />
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div className="review-card-title">Charging Points</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {chargers.map((charger, idx) => {
+                    const modelObj = models.find(m => m.id === charger.modelId);
+                    const errors = formErrors[idx] || {};
+                    return (
+                      <div key={charger.id} className="charger-edit-item" style={charger.pendingReassignTo ? { opacity: 0.6 } : {}}>
+                        <div className="charger-edit-item-header">
+                          <div className="charger-edit-item-title">
+                            <strong>{charger.id.startsWith('PENDING-AUTO-') ? '(Auto ID Generated)' : charger.id}</strong>
+                            <span>—</span>
+                            <span>{charger.name}</span>
+                          </div>
+                          <div className="charger-edit-item-actions">
+                            {charger.pendingReassignTo ? (
+                              <div className="reassign-badge-inline">
+                                <span>Pending reassign to {stations.find(s => s.id === charger.pendingReassignTo)?.name}</span>
+                                <span className="reassign-undo-btn" onClick={() => updateChargerField(idx, 'pendingReassignTo', null)}>Undo</span>
+                              </div>
+                            ) : (
+                              <>
+                                <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => setChargers(chargers.map((c, i) => i === idx ? { ...c, isEditingInline: !c.isEditingInline } : c))}>Configure</button>
+                                {!charger.isNew && <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', color: 'var(--primary)' }} onClick={() => { setReassignIndex(idx); setReassignStationId(''); }}>Reassign</button>}
+                                <button className="btn btn-danger" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => setChargers(chargers.filter((_, i) => i !== idx))}>Remove</button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {charger.isEditingInline && !charger.pendingReassignTo && (
+                          <div className="inline-form-grid">
+                            <div className="form-group">
+                              <label className="form-label">Point Name</label>
+                              <input type="text" className="input-field" value={charger.name} onChange={(e) => updateChargerField(idx, 'name', e.target.value)} />
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label">Community</label>
+                              <SearchableDropdown options={INITIAL_COMMUNITIES} value={charger.communityId} onChange={(val) => updateChargerField(idx, 'communityId', val)} />
+                            </div>
+
+                            {modelObj && (
+                              <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <label className="form-label">Tariffs</label>
+                                  {modelObj.connectorTypes.length > 1 && (
+                                    <div className="filter-toggle-mode" style={{ width: '220px' }}>
+                                      <button className={`filter-toggle-btn ${charger.tariffMode === 'same' ? 'active' : ''}`} onClick={() => updateChargerField(idx, 'tariffMode', 'same')}>Same for all</button>
+                                      <button className={`filter-toggle-btn ${charger.tariffMode === 'per-connector' ? 'active' : ''}`} onClick={() => updateChargerField(idx, 'tariffMode', 'per-connector')}>Per connector</button>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {charger.tariffMode === 'same' || modelObj.connectorTypes.length === 1 ? (
+                                  <div className="form-group">
+                                    <SearchableDropdown options={INITIAL_TARIFFS} value={charger.tariffId} onChange={(val) => updateChargerField(idx, 'tariffId', val)} placeholder="Select Tariff..." error={errors.tariffId} />
+                                    {errors.tariffId && <div className="error-text">{errors.tariffId}</div>}
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                    {modelObj.connectorTypes.map((conn, cidx) => {
+                                      const ct = charger.connectorTariffs.find(u => u.label === conn.label);
+                                      const cErr = errors.connectorTariffs?.[cidx];
+                                      return (
+                                        <div className="form-group" key={cidx}>
+                                          <label className="form-label">{conn.label} Tariff</label>
+                                          <SearchableDropdown options={INITIAL_TARIFFS} value={ct ? ct.tariffId : ''} onChange={(val) => {
+                                            const updated = [...charger.connectorTariffs];
+                                            const existIdx = updated.findIndex(u => u.label === conn.label);
+                                            if (existIdx > -1) updated[existIdx].tariffId = val;
+                                            else updated.push({ label: conn.label, tariffId: val });
+                                            updateChargerField(idx, 'connectorTariffs', updated);
+                                          }} placeholder="Select Tariff..." error={cErr} />
+                                          {cErr && <div className="error-text">{cErr}</div>}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Add new point subflow */}
+                <div className="repeater-block" style={{ backgroundColor: '#fff', borderStyle: 'dashed' }}>
+                  <div className="repeater-block-title" style={{ fontSize: '13px', color: 'var(--text-muted)' }}>+ Add New Point</div>
+                  <div className="form-group-row">
+                    <div className="form-group">
+                      <label className="form-label">Model</label>
+                      <SearchableDropdown options={models} value={addPointModelId} onChange={handleAddPointModelChange} placeholder="Select Model..." error={addPointErrors.modelId} />
+                      {addPointErrors.modelId && <div className="error-text">{addPointErrors.modelId}</div>}
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Count</label>
+                      <input type="number" className="input-field" min="1" value={addPointCount} onChange={(e) => setAddPointCount(Math.max(1, parseInt(e.target.value) || 1))} />
+                    </div>
+                  </div>
+
+                  {addPointModelId && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <label className="form-label">Tariff Selection</label>
+                        {models.find(m => m.id === addPointModelId)?.connectorTypes.length > 1 && (
+                          <div className="filter-toggle-mode" style={{ width: '220px' }}>
+                            <button className={`filter-toggle-btn ${addPointTariffMode === 'same' ? 'active' : ''}`} onClick={() => setAddPointTariffMode('same')}>Same for all</button>
+                            <button className={`filter-toggle-btn ${addPointTariffMode === 'per-connector' ? 'active' : ''}`} onClick={() => setAddPointTariffMode('per-connector')}>Per connector</button>
+                          </div>
+                        )}
+                      </div>
+                      {addPointTariffMode === 'same' || models.find(m => m.id === addPointModelId)?.connectorTypes.length === 1 ? (
+                        <div className="form-group">
+                          <SearchableDropdown options={INITIAL_TARIFFS} value={addPointTariffId} onChange={(val) => setAddPointTariffId(val)} placeholder="Select Tariff..." error={addPointErrors.tariffId} />
+                          {addPointErrors.tariffId && <div className="error-text">{addPointErrors.tariffId}</div>}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                          {models.find(m => m.id === addPointModelId)?.connectorTypes.map((conn, cidx) => {
+                            const val = addPointConnectorTariffs[cidx]?.tariffId || '';
+                            const cErr = addPointErrors.connectorTariffs?.[cidx];
+                            return (
+                              <div className="form-group" key={cidx}>
+                                <label className="form-label">{conn.label} Tariff</label>
+                                <SearchableDropdown options={INITIAL_TARIFFS} value={val} onChange={(tval) => {
+                                  const updated = [...addPointConnectorTariffs];
+                                  updated[cidx] = { label: conn.label, tariffId: tval };
+                                  setAddPointConnectorTariffs(updated);
+                                }} placeholder="Select Tariff..." error={cErr} />
+                                {cErr && <div className="error-text">{cErr}</div>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="form-group">
+                        <label className="form-label">Community</label>
+                        <SearchableDropdown options={INITIAL_COMMUNITIES} value={addPointCommunityId} onChange={(val) => setAddPointCommunityId(val)} />
+                      </div>
+                    </div>
+                  )}
+                  <button className="btn btn-secondary" onClick={handleAddPointSubmit} style={{ alignSelf: 'flex-start' }}>Confirm Add</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="wizard-footer">
+            <button className="btn btn-secondary" onClick={step === 2 ? () => setStep(1) : () => navigateTo('stations')}>{step === 2 ? 'Back' : 'Cancel'}</button>
+            {step === 1 ? <button className="btn btn-primary" onClick={() => setStep(2)}>Next</button> : <button className="btn btn-primary" onClick={handleSave}>Save Changes</button>}
+          </div>
+
+          {/* Pending Reassign Modal */}
+          <Modal
+            isOpen={reassignIndex !== null}
+            onClose={() => setReassignIndex(null)}
+            title="Reassign Point (Pending)"
+            footerButtons={
+              <>
+                <button className="btn btn-secondary" onClick={() => setReassignIndex(null)}>Cancel</button>
+                <button className="btn btn-primary" disabled={!reassignStationId} onClick={() => {
+                  setChargers(chargers.map((c, i) => i === reassignIndex ? { ...c, pendingReassignTo: reassignStationId } : c));
+                  setReassignIndex(null);
+                }}>Reassign</button>
+              </>
+            }
+          >
+            <p>Reassign point <strong>{chargers[reassignIndex]?.id}</strong>. Pending until wizard is saved.</p>
+            <div className="form-group">
+              <label className="form-label">Target Station</label>
+              <SearchableDropdown options={stations.filter(s => s.id !== editingStationId && !s.isDeleted)} value={reassignStationId} onChange={setReassignStationId} />
+            </div>
+          </Modal>
+        </div>
+      );
+    };
+
+    // --- SCREEN 4: CHARGING POINTS NETWORK LIST ---
+    const PointsList = () => {
+      const { points, stations, models, reopenPoint, deletePoint, reassignPointImmediately, closePointOnApp, openPointOnApp } = useContext(CpoContext);
+      
+      const [globalSearch, setGlobalSearch] = useState('');
+      
+      const [columnFilters, setColumnFilters] = useState({ id: '', name: '', stationId: '', status: '', modelId: '', tariffId: '', communityId: '', appStatus: '' });
+      const [activeFilterPopover, setActiveFilterPopover] = useState(null);
+      const filterWrapperRef = useRef(null);
+
+      const [activeRowMenu, setActiveRowMenu] = useState(null); 
+
+      // Modals
+      const [deleteModalPoint, setDeleteModalPoint] = useState(null);
+      const [closeAppModalPoint, setCloseAppModalPoint] = useState(null);
+      const [reassignModalPoint, setReassignModalPoint] = useState(null);
+      const [reassignStationId, setReassignStationId] = useState('');
+
+      useEffect(() => {
+        const handleClickOutside = (e) => {
+          if (filterWrapperRef.current && !filterWrapperRef.current.contains(e.target)) setActiveFilterPopover(null);
+          if (e.target.closest('.row-menu-container') === null) setActiveRowMenu(null);
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }, []);
+
+      const uniqueColumnValues = useMemo(() => {
+        return {
+          id: [...new Set(points.map(p => p.id))].map(v => ({ id: v, name: v })),
+          name: [...new Set(points.map(p => p.name))].map(v => ({ id: v, name: v })),
+          stationId: stations.map(s => ({ id: s.id, name: s.name })),
+          status: ['Undefined', 'Active', 'Inactive', 'Closed'].map(v => ({ id: v, name: v })),
+          modelId: models.map(m => ({ id: m.id, name: m.name })),
+          tariffId: INITIAL_TARIFFS.map(t => ({ id: t.id, name: t.name })),
+          communityId: INITIAL_COMMUNITIES.map(c => ({ id: c.id, name: c.name })),
+          appStatus: ['Open', 'Closed'].map(v => ({ id: v, name: v }))
+        };
+      }, [points, stations, models]);
+
+      const processedPoints = useMemo(() => {
+        let result = points.filter(p => !p.isDeleted);
+        if (globalSearch) {
+          const query = globalSearch.toLowerCase();
+          result = result.filter(p => {
+            const mName = models.find(m => m.id === p.modelId)?.name || '';
+            return p.id.toLowerCase().includes(query) || p.name.toLowerCase().includes(query) || mName.toLowerCase().includes(query);
+          });
+        }
+        Object.keys(columnFilters).forEach(key => {
+          const val = columnFilters[key];
+          if (val) {
+            result = result.filter(p => {
+              if (key === 'tariffId') {
+                if (p.tariffId) return p.tariffId === val;
+                return p.connectorTariffs?.some(ct => ct.tariffId === val);
+              }
+              return p[key] === val;
+            });
+          }
+        });
+        const SORT_ORDER = { 'Inactive': 0, 'Partial Active': 1, 'Undefined': 2, 'Active': 3, 'Closed': 4 };
+        return result.sort((a, b) => SORT_ORDER[a.status] - SORT_ORDER[b.status]);
+      }, [points, globalSearch, columnFilters, models]);
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div className="toolbar">
+            <div className="toolbar-left">
+              <div className="search-input-wrapper">
+                <Icon name="search" />
+                <input type="text" className="search-input" placeholder="Search Charger ID, Name, Model..." value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)} />
+              </div>
+              {(globalSearch || Object.values(columnFilters).some(f => f)) && (
+                <span className="clear-filters" onClick={() => { setGlobalSearch(''); setColumnFilters({ id: '', name: '', stationId: '', status: '', modelId: '', tariffId: '', communityId: '', appStatus: '' }); }}>Clear all filters</span>
+              )}
+            </div>
+          </div>
+
+          <div className="table-container">
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    {['id', 'name', 'stationId', 'status', 'modelId', 'tariffId', 'communityId', 'appStatus'].map(colKey => {
+                      const label = { id: 'Charger ID', name: 'Point Name', stationId: 'Station', status: 'Connection Status', modelId: 'Model', tariffId: 'Tariff', communityId: 'Community', appStatus: 'App Status' }[colKey];
+                      const isFilterActive = columnFilters[colKey] !== '';
+                      return (
+                        <th key={colKey}>
+                          <div className="column-header-content">
+                            <span>{label}</span>
+                            <div className="column-filter-popover" ref={activeFilterPopover === colKey ? filterWrapperRef : null}>
+                              <button className={`filter-trigger-btn ${isFilterActive ? 'active' : ''}`} onClick={() => setActiveFilterPopover(activeFilterPopover === colKey ? null : colKey)}><Icon name="filter" /></button>
+                              {activeFilterPopover === colKey && (
+                                <div className="filter-dropdown">
+                                  <select className="filter-select" value={columnFilters[colKey]} onChange={(e) => setColumnFilters({ ...columnFilters, [colKey]: e.target.value })}>
+                                    <option value="">Equals...</option>
+                                    {uniqueColumnValues[colKey].map(opt => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
+                                  </select>
+                                  <div className="filter-actions"><span className="clear-filters" style={{ fontSize: '12px' }} onClick={() => setColumnFilters({ ...columnFilters, [colKey]: '' })}>Clear</span></div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </th>
+                      );
+                    })}
+                    <th>Sessions</th>
+                    <th style={{ width: '50px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {processedPoints.length === 0 ? <tr><td colSpan="10" style={{ textAlign: 'center', padding: '30px' }}>No points found.</td></tr> : (
+                    processedPoints.map(p => {
+                      const station = stations.find(s => s.id === p.stationId);
+                      const model = models.find(m => m.id === p.modelId);
+                      const comm = INITIAL_COMMUNITIES.find(c => c.id === p.communityId);
+                      let tStr = '—';
+                      if (p.connectorTariffs && p.connectorTariffs.length > 0) {
+                        tStr = 'Split (Connector)';
+                      } else if (p.tariffId) {
+                        tStr = `${INITIAL_TARIFFS.find(t => t.id === p.tariffId)?.name || p.tariffId} (Point)`;
+                      } else if (station && station.tariffId) {
+                        tStr = `${INITIAL_TARIFFS.find(t => t.id === station.tariffId)?.name || station.tariffId} (Station)`;
+                      }
+
+                      return (
+                        <tr key={`${p.id}-${p.isHistorical ? 'hist' : 'act'}`} className={p.isDeleted ? 'row-deleted' : ''} style={p.isHistorical ? { opacity: 0.6 } : {}}>
+                          <td><strong>{p.id}</strong> {p.isHistorical && <span className="badge badge-historical" style={{ fontSize: '9px', marginLeft: '6px' }}>GHOST</span>}</td>
+                          <td>{p.name}</td>
+                          <td>
+                            <div>{station ? station.name : p.stationId}</div>
+                            {p.isHistorical && <div style={{ fontSize: '11px', color: 'var(--primary)' }}>➜ {stations.find(s => s.id === p.reassignedToStationId)?.name}</div>}
+                          </td>
+                          <td><StatusBadge status={p.status} deleted={p.isDeleted} /></td>
+                          <td>{model ? model.name : p.modelId}</td>
+                          <td>{tStr}</td>
+                          <td>{comm ? comm.name : '—'}</td>
+                          <td>
+                            <span className={`badge ${p.appStatus === 'Open' ? 'badge-active' : 'badge-inactive'}`}>
+                              {p.appStatus || 'Open'}
+                            </span>
+                          </td>
+                          <td>{p.sessions30}</td>
+                          <td>
+                            {!p.isHistorical && (
+                              <div className="row-menu-container">
+                                <button className="row-actions-btn" onClick={() => setActiveRowMenu(activeRowMenu === p.id ? null : p.id)}>⋮</button>
+                                {activeRowMenu === p.id && (
+                                  <div className="row-menu-dropdown">
+                                    <button className="row-menu-item" onClick={() => alert(`Edit is done via Station Edit wizard.`)}>Edit Details</button>
+                                    {p.appStatus === 'Closed' ? (
+                                      <button className="row-menu-item" style={{ color: 'var(--primary)' }} onClick={() => { openPointOnApp(p.id); setActiveRowMenu(null); }}>Open on App</button>
+                                    ) : (
+                                      <button className="row-menu-item danger" onClick={() => { setCloseAppModalPoint(p); setActiveRowMenu(null); }}>Close on App</button>
+                                    )}
+                                    {!p.isDeleted && (
+                                      <button className="row-menu-item danger" onClick={() => { setDeleteModalPoint(p); setActiveRowMenu(null); }}>Delete</button>
+                                    )}
+                                    {p.status === 'Closed' && (
+                                      <button className="row-menu-item" style={{ color: 'var(--primary)' }} onClick={() => { reopenPoint(p.id); setActiveRowMenu(null); }}>Reopen</button>
+                                    )}
+                                    <button className="row-menu-item" style={{ color: 'var(--primary)' }} onClick={() => { setReassignModalPoint(p); setReassignStationId(''); setActiveRowMenu(null); }}>Reassign</button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Delete Modal */}
+          <Modal
+            isOpen={deleteModalPoint !== null}
+            onClose={() => setDeleteModalPoint(null)}
+            title={deleteModalPoint?.status === 'Undefined' ? "Permanently Delete Charging Point" : "Delete Charging Point"}
+            footerButtons={
+              <>
+                <button className="btn btn-secondary" onClick={() => setDeleteModalPoint(null)}>Cancel</button>
+                <button className="btn btn-danger" onClick={() => { deletePoint(deleteModalPoint.id); setDeleteModalPoint(null); }}>Delete</button>
+              </>
+            }
+          >
+            {deleteModalPoint?.status === 'Undefined' ? (
+              <>
+                <p style={{ color: '#EF4444', fontWeight: '600' }}>⚠️ WARNING: PERMANENT ACTION</p>
+                <p>Are you sure you want to permanently delete charging point <strong>{deleteModalPoint?.id}</strong>? This point is Undefined and will be completely removed from the system.</p>
+              </>
+            ) : (
+              <>
+                <p style={{ color: '#EF4444', fontWeight: '600' }}>⚠️ WARNING: SOFT DELETION</p>
+                <p>Are you sure you want to delete charging point <strong>{deleteModalPoint?.id}</strong>? Both its status and mobile app status will be marked as <strong>Deleted</strong>.</p>
+              </>
+            )}
+          </Modal>
+
+          {/* Close App Modal */}
+          <Modal
+            isOpen={closeAppModalPoint !== null}
+            onClose={() => setCloseAppModalPoint(null)}
+            title={`Close Charging Point on App: ${closeAppModalPoint?.id}`}
+            footerButtons={
+              <>
+                <button className="btn btn-secondary" onClick={() => setCloseAppModalPoint(null)}>Cancel</button>
+                <button className="btn btn-danger" onClick={() => { closePointOnApp(closeAppModalPoint.id); setCloseAppModalPoint(null); }}>Confirm</button>
+              </>
+            }
+          >
+            <p style={{ color: 'var(--primary)', fontWeight: '600' }}>⚠️ Close Point on Customer App</p>
+            <p>Are you sure you want to close charging point <strong>{closeAppModalPoint?.id}</strong>? The point will be closed and users won't be able to view it on the app. The connection status will remain unchanged.</p>
+          </Modal>
+
+          {/* Reassign Immediately Modal */}
+          <Modal
+            isOpen={reassignModalPoint !== null}
+            onClose={() => setReassignModalPoint(null)}
+            title={`Immediate Point Reassignment: ${reassignModalPoint?.id}`}
+            footerButtons={
+              <>
+                <button className="btn btn-secondary" onClick={() => setReassignModalPoint(null)}>Cancel</button>
+                <button className="btn btn-primary" disabled={!reassignStationId} onClick={() => {
+                  reassignPointImmediately(reassignModalPoint.id, reassignStationId);
+                  setReassignModalPoint(null);
+                }}>Confirm Reassign</button>
+              </>
+            }
+          >
+            <p>Moving charger {reassignModalPoint?.id} immediately. Past history remains with current site.</p>
+            <div className="form-group">
+              <label className="form-label">Target Station <span>*</span></label>
+              <SearchableDropdown options={stations.filter(s => s.id !== reassignModalPoint?.stationId && !s.isDeleted)} value={reassignStationId} onChange={setReassignStationId} placeholder="Select Station..." />
+            </div>
+          </Modal>
+        </div>
+      );
+    };
+
+    // --- SCREEN 5: ASSET CONFIGURATIONS SETTINGS (NEW MODULE) ---
+    const AssetConfigurations = () => {
+      const { 
+        models, connectorTypes, amenities, vendors, hasModelPermission,
+        isModelLocked, isConnectorLocked, isAmenityLocked,
+        addModel, updateModel, deleteModel,
+        addConnectorType, updateConnectorType, deleteConnectorType,
+        addAmenity, updateAmenity, deleteAmenity, addVendor, points,
+        configFocusSection
+      } = useContext(CpoContext);
+
+      const [isModelsExpanded, setIsModelsExpanded] = useState(true);
+      const [isConnectorsExpanded, setIsConnectorsExpanded] = useState(true);
+      const [isAmenitiesExpanded, setIsAmenitiesExpanded] = useState(true);
+
+      useEffect(() => {
+        if (configFocusSection === 'models') {
+          setIsModelsExpanded(true);
+          setIsConnectorsExpanded(false);
+          setIsAmenitiesExpanded(false);
+        } else if (configFocusSection === 'connectors') {
+          setIsModelsExpanded(false);
+          setIsConnectorsExpanded(true);
+          setIsAmenitiesExpanded(false);
+        } else if (configFocusSection === 'amenities') {
+          setIsModelsExpanded(false);
+          setIsConnectorsExpanded(false);
+          setIsAmenitiesExpanded(true);
+        } else if (configFocusSection === 'all') {
+          setIsModelsExpanded(true);
+          setIsConnectorsExpanded(true);
+          setIsAmenitiesExpanded(true);
+        }
+      }, [configFocusSection]);
+
+      // Drawer states for Models
+      const [isModelDrawerOpen, setIsModelDrawerOpen] = useState(false);
+      const [drawerModelId, setDrawerModelId] = useState(null); // null (for add) or modelId
+      const [modelForm, setModelForm] = useState({
+        vendor: '',
+        name: '',
+        modelId: '',
+        type: 'AC', // 'AC' | 'DC' | 'AC&DC'
+        numConnectors: 1,
+        connectorsList: [{ label: '', power: '', kind: 'AC' }],
+        builtin: true,
+        totalPower: ''
+      });
+      const [modelErrors, setModelErrors] = useState({});
+
+      // Connector Modals
+      const [connectorModalData, setConnectorModalData] = useState(null); // null | { id, name, isEdit }
+      const [connectorInputValue, setConnectorInputValue] = useState('');
+      const [connectorConfirmDelete, setConnectorConfirmDelete] = useState(null); // null | connectorObj
+
+      // Amenity Modals
+      const [amenityModalData, setAmenityModalData] = useState(null); // null | { id, name, icon, isEdit }
+      const [amenityNameInput, setAmenityNameInput] = useState('');
+      const [amenityIconSelected, setAmenityIconSelected] = useState('parking');
+      const [amenityConfirmDelete, setAmenityConfirmDelete] = useState(null); // null | amenityObj
+
+      const handleAddModelClick = () => {
+        if (!hasModelPermission) return;
+        setDrawerModelId(null);
+        setModelForm({
+          vendor: '',
+          name: '',
+          modelId: '',
+          type: 'AC',
+          numConnectors: 1,
+          connectorsList: [{ label: '', power: '', kind: 'AC' }],
+          builtin: true,
+          totalPower: ''
+        });
+        setModelErrors({});
+        setIsModelDrawerOpen(true);
+      };
+
+      const handleEditModelClick = (m) => {
+        setDrawerModelId(m.id);
+        setModelForm({
+          vendor: m.vendor,
+          name: m.name,
+          modelId: m.id,
+          type: m.type,
+          numConnectors: m.connectorTypes.length,
+          connectorsList: m.connectorTypes.map(c => ({ label: c.label, power: c.power, kind: c.kind })),
+          builtin: m.builtin,
+          totalPower: m.totalPower
+        });
+        setModelErrors({});
+        setIsModelDrawerOpen(true);
+      };
+
+      const handleModelFormChange = (field, val) => {
+        setModelForm(prev => {
+          const updated = { ...prev, [field]: val };
+          if (field === 'numConnectors') {
+            const count = Math.max(1, parseInt(val) || 1);
+            updated.numConnectors = count;
+            const newList = [...prev.connectorsList];
+            while (newList.length < count) newList.push({ label: '', power: '', kind: 'AC' });
+            newList.splice(count);
+            updated.connectorsList = newList;
+          }
+          return updated;
+        });
+      };
+
+      const updateModelConnectorField = (idx, field, val) => {
+        const list = [...modelForm.connectorsList];
+        list[idx] = { ...list[idx], [field]: val };
+        setModelForm({ ...modelForm, connectorsList: list });
+      };
+
+      const handleModelSave = () => {
+        // Validation
+        const errs = {};
+        if (!modelForm.vendor) errs.vendor = "Vendor is required.";
+        if (!modelForm.name.trim()) errs.name = "Name is required.";
+        if (!modelForm.modelId.trim() && !drawerModelId) errs.modelId = "Model ID is required.";
+        if (!modelForm.totalPower.trim()) errs.totalPower = "Total Power is required.";
+        
+        modelForm.connectorsList.forEach((c, idx) => {
+          if (!c.label.trim()) {
+            if (!errs.connectors) errs.connectors = [];
+            errs.connectors[idx] = "Label required.";
+          }
+        });
+
+        if (Object.keys(errs).length > 0) {
+          setModelErrors(errs);
+          return;
+        }
+
+        const modelObj = {
+          id: drawerModelId || modelForm.modelId,
+          name: modelForm.name,
+          vendor: modelForm.vendor,
+          type: modelForm.type,
+          connectorTypes: modelForm.connectorsList.map(c => ({ label: c.label, power: c.power, kind: c.kind })),
+          builtin: modelForm.builtin,
+          totalPower: modelForm.totalPower,
+          connections: `${modelForm.numConnectors} ${modelForm.builtin ? 'Connectors' : 'Sockets'}`
+        };
+
+        if (drawerModelId) {
+          updateModel(drawerModelId, modelObj);
+        } else {
+          addModel(modelObj);
+        }
+        setIsModelDrawerOpen(false);
+      };
+
+      // Model Delete
+      const [modelConfirmDelete, setModelConfirmDelete] = useState(null); // null | modelObj
+      const handleConfirmDeleteModel = () => {
+        deleteModel(modelConfirmDelete.id);
+        setModelConfirmDelete(null);
+      };
+
+      // Connector Save
+      const handleSaveConnector = () => {
+        if (!connectorInputValue.trim()) return;
+        if (connectorModalData.isEdit) {
+          updateConnectorType(connectorModalData.id, connectorInputValue);
+        } else {
+          addConnectorType(connectorInputValue);
+        }
+        setConnectorModalData(null);
+      };
+
+      // Amenity Save
+      const handleSaveAmenity = () => {
+        if (!amenityNameInput.trim()) return;
+        if (amenityModalData.isEdit) {
+          updateAmenity(amenityModalData.id, amenityNameInput, amenityIconSelected);
+        } else {
+          addAmenity(amenityNameInput, amenityIconSelected);
+        }
+        setAmenityModalData(null);
+      };
+
+      return (
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          
+          {/* SECTION: MODELS */}
+          <div className="config-section-card">
+            <div className="config-section-header" onClick={() => setIsModelsExpanded(!isModelsExpanded)}>
+              <span className="config-section-title">
+                <span className="config-section-arrow" style={{ transform: isModelsExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block', marginRight: '6px' }}>▶</span>
+                Charging Point Models
+              </span>
+            </div>
+            {isModelsExpanded && (
+              <div className="config-section-body">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h2 style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-muted)' }}>Configure hardware profiles and specifications</h2>
+                  <Tooltip text={!hasModelPermission ? "Missing Model.Create permission." : ""}>
+                    <button 
+                      className="btn btn-primary"
+                      disabled={!hasModelPermission}
+                      onClick={handleAddModelClick}
+                      style={{ opacity: !hasModelPermission ? 0.4 : 1 }}
+                    >
+                      {!hasModelPermission && <Icon name="lock" />}
+                      <span>Add Model</span>
+                    </button>
+                  </Tooltip>
+                </div>
+
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Model Name</th>
+                        <th>Type</th>
+                        <th>Total Power</th>
+                        <th>Connector Type</th>
+                        <th>Connections</th>
+                        <th>Live Points</th>
+                        <th style={{ width: '100px' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {models.map(m => {
+                        const numPoints = points.filter(p => p.modelId === m.id && !p.isHistorical).length;
+                        const isLocked = isModelLocked(m.id);
+                        
+                        // Custom badge color pairing by type
+                        let tBadgeClass = 'ac';
+                        if (m.type === 'DC') tBadgeClass = 'dc';
+                        else if (m.type === 'AC&DC') tBadgeClass = 'acdc';
+
+                        return (
+                          <tr key={m.id}>
+                            <td>
+                              <strong>{m.name}</strong>
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Vendor: {m.vendor}</div>
+                            </td>
+                            <td><span className={`type-badge ${tBadgeClass}`}>{m.type}</span></td>
+                            <td>{m.totalPower}</td>
+                            <td>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                                {m.connectorTypes.map((c, i) => (
+                                  <span key={i} className="badge badge-partial" style={{ fontSize: '11px', padding: '3px 8px', fontWeight: '500', background: '#F1F5F9', color: '#334155', border: '1px solid #E2E8F0', borderRadius: '12px', whiteSpace: 'nowrap' }}>
+                                    {c.label}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                            <td>{m.connections}</td>
+                            <td>{numPoints}</td>
+                            <td>
+                              <div style={{ display: 'flex', gap: '12px' }}>
+                                <button 
+                                  className="filter-trigger-btn"
+                                  onClick={() => handleEditModelClick(m)}
+                                  title={isLocked ? "View Details (Locked)" : "Edit Model"}
+                                >
+                                  <Icon name="pencil" />
+                                </button>
+                                
+                                <Tooltip text={isLocked ? "Cannot delete: Model assigned to live charging points." : ""}>
+                                  <button 
+                                    className={`filter-trigger-btn ${isLocked ? 'action-btn-disabled' : ''}`}
+                                    disabled={isLocked}
+                                    onClick={() => setModelConfirmDelete(m)}
+                                    style={{ color: isLocked ? '#9ca3af' : '#dc2626' }}
+                                  >
+                                    <Icon name="trash" />
+                                  </button>
+                                </Tooltip>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* SECTION: CONNECTOR TYPES */}
+          <div className="config-section-card">
+            <div className="config-section-header" onClick={() => setIsConnectorsExpanded(!isConnectorsExpanded)}>
+              <span className="config-section-title">
+                <span className="config-section-arrow" style={{ transform: isConnectorsExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block', marginRight: '6px' }}>▶</span>
+                Connector Types
+              </span>
+            </div>
+            {isConnectorsExpanded && (
+              <div className="config-section-body">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h2 style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-muted)' }}>Manage supported connector formats</h2>
+                  <button className="btn btn-primary" onClick={() => { setConnectorModalData({ name: '', isEdit: false }); setConnectorInputValue(''); }}>
+                    <Icon name="plus" />
+                    <span>Add Connector Type</span>
+                  </button>
+                </div>
+
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Connector Name</th>
+                        <th style={{ width: '100px' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {connectorTypes.map(c => {
+                        const isLocked = isConnectorLocked(c.name);
+                        return (
+                          <tr key={c.id}>
+                            <td><strong>{c.name}</strong></td>
+                            <td>
+                              <div style={{ display: 'flex', gap: '12px' }}>
+                                <Tooltip text={isLocked ? "Cannot edit: Connector configured in models." : ""}>
+                                  <button 
+                                    className={`filter-trigger-btn ${isLocked ? 'action-btn-disabled' : ''}`}
+                                    disabled={isLocked}
+                                    onClick={() => { setConnectorModalData({ id: c.id, name: c.name, isEdit: true }); setConnectorInputValue(c.name); }}
+                                  >
+                                    <Icon name="pencil" />
+                                  </button>
+                                </Tooltip>
+                                
+                                <Tooltip text={isLocked ? "Cannot delete: Connector configured in models." : ""}>
+                                  <button 
+                                    className={`filter-trigger-btn ${isLocked ? 'action-btn-disabled' : ''}`}
+                                    disabled={isLocked}
+                                    onClick={() => setConnectorConfirmDelete(c)}
+                                    style={{ color: isLocked ? '#9ca3af' : '#dc2626' }}
+                                  >
+                                    <Icon name="trash" />
+                                  </button>
+                                </Tooltip>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* SECTION: AMENITIES */}
+          <div className="config-section-card">
+            <div className="config-section-header" onClick={() => setIsAmenitiesExpanded(!isAmenitiesExpanded)}>
+              <span className="config-section-title">
+                <span className="config-section-arrow" style={{ transform: isAmenitiesExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block', marginRight: '6px' }}>▶</span>
+                Amenities
+              </span>
+            </div>
+            {isAmenitiesExpanded && (
+              <div className="config-section-body">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h2 style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-muted)' }}>Configure location amenities and facilities</h2>
+                  <button className="btn btn-primary" onClick={() => { setAmenityModalData({ name: '', icon: 'parking', isEdit: false }); setAmenityNameInput(''); setAmenityIconSelected('parking'); }}>
+                    <Icon name="plus" />
+                    <span>Add Amenity</span>
+                  </button>
+                </div>
+
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Amenity Name</th>
+                        <th>Icon Preview</th>
+                        <th style={{ width: '100px' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {amenities.map(a => {
+                        const isLocked = isAmenityLocked(a.name);
+                        return (
+                          <tr key={a.id}>
+                            <td><strong>{a.name}</strong></td>
+                            <td>
+                              <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569' }}>
+                                <Icon name={a.icon} />
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: '12px' }}>
+                                <Tooltip text={isLocked ? "Cannot edit: Amenity active on stations." : ""}>
+                                  <button 
+                                    className={`filter-trigger-btn ${isLocked ? 'action-btn-disabled' : ''}`}
+                                    disabled={isLocked}
+                                    onClick={() => { setAmenityModalData({ id: a.id, name: a.name, icon: a.icon, isEdit: true }); setAmenityNameInput(a.name); setAmenityIconSelected(a.icon); }}
+                                  >
+                                    <Icon name="pencil" />
+                                  </button>
+                                </Tooltip>
+
+                                <Tooltip text={isLocked ? "Cannot delete: Amenity active on stations." : ""}>
+                                  <button 
+                                    className={`filter-trigger-btn ${isLocked ? 'action-btn-disabled' : ''}`}
+                                    disabled={isLocked}
+                                    onClick={() => setAmenityConfirmDelete(a)}
+                                    style={{ color: isLocked ? '#9ca3af' : '#dc2626' }}
+                                  >
+                                    <Icon name="trash" />
+                                  </button>
+                                </Tooltip>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
+
+          {/* MODELS DRAWER INTERFACE (ADD/EDIT MODEL) */}
+          <Drawer
+            isOpen={isModelDrawerOpen}
+            onClose={() => setIsModelDrawerOpen(false)}
+            title={drawerModelId ? (isModelLocked(drawerModelId) ? "Model Summary (Locked)" : "Edit Model") : "Add Charging Point Model"}
+            footerButtons={
+              <>
+                <button className="btn btn-secondary" onClick={() => setIsModelDrawerOpen(false)}>
+                  {drawerModelId && isModelLocked(drawerModelId) ? "Close" : "Cancel"}
+                </button>
+                {(!drawerModelId || !isModelLocked(drawerModelId)) && (
+                  <button className="btn btn-primary" onClick={handleModelSave}>
+                    Save Model
+                  </button>
+                )}
+              </>
+            }
+          >
+            {drawerModelId && isModelLocked(drawerModelId) ? (
+              /* Read-only summaries for locked models */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div className="warning-banner">
+                  <span style={{ fontSize: '18px' }}>ℹ️</span>
+                  <div>
+                    <strong>Locked Model Configuration</strong><br />
+                    This model is active on live stations. Fields are locked to prevent configuration mismatch. Contact engineering for core changes.
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <span className="form-label" style={{ fontSize: '11.5px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Vendor</span>
+                  <div style={{ fontSize: '14px', fontWeight: '500' }}>{modelForm.vendor}</div>
+                </div>
+                <div className="form-group">
+                  <span className="form-label" style={{ fontSize: '11.5px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Model Name</span>
+                  <div style={{ fontSize: '14px', fontWeight: '500' }}>{modelForm.name}</div>
+                </div>
+                <div className="form-group">
+                  <span className="form-label" style={{ fontSize: '11.5px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Model ID</span>
+                  <div style={{ fontSize: '14px', fontWeight: '500' }}>{modelForm.modelId}</div>
+                </div>
+                <div className="form-group">
+                  <span className="form-label" style={{ fontSize: '11.5px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Model Type</span>
+                  <div style={{ fontSize: '14px', fontWeight: '500' }}><span className={`type-badge ${modelForm.type === 'DC' ? 'dc' : modelForm.type === 'AC&DC' ? 'acdc' : 'ac'}`}>{modelForm.type}</span></div>
+                </div>
+                <div className="form-group">
+                  <span className="form-label" style={{ fontSize: '11.5px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Total Power</span>
+                  <div style={{ fontSize: '14px', fontWeight: '500' }}>{modelForm.totalPower}</div>
+                </div>
+                <div className="form-group">
+                  <span className="form-label" style={{ fontSize: '11.5px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Connectors ({modelForm.numConnectors})</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                    {modelForm.connectorsList.map((c, cidx) => (
+                      <div key={cidx} className="spec-chip" style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px' }}>
+                        <span>{c.label}</span>
+                        <strong style={{ color: 'var(--primary)' }}>{c.power} ({c.kind})</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Editable input form */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Vendor Searchable single-select dropdown with inline Add Vendor capability */}
+                <div className="form-group">
+                  <label className="form-label">Vendor <span>*</span></label>
+                  <SearchableDropdown
+                    options={vendors.map(v => ({ id: v, name: v }))}
+                    value={modelForm.vendor}
+                    onChange={(val) => handleModelFormChange('vendor', val)}
+                    placeholder="Search Vendor..."
+                    error={modelErrors.vendor}
+                    onAddNew={(val) => addVendor(val)}
+                  />
+                  {modelErrors.vendor && <div className="error-text">{modelErrors.vendor}</div>}
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Model Name <span>*</span></label>
+                  <input 
+                    type="text" 
+                    className={`input-field ${modelErrors.name ? 'error' : ''}`}
+                    placeholder="e.g. Terra 54"
+                    value={modelForm.name}
+                    onChange={(e) => handleModelFormChange('name', e.target.value)}
+                  />
+                  {modelErrors.name && <div className="error-text">{modelErrors.name}</div>}
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Model ID <span>*</span></label>
+                  <input 
+                    type="text" 
+                    className={`input-field ${modelErrors.modelId ? 'error' : ''}`}
+                    placeholder="e.g. MOD-ABB-50"
+                    value={modelForm.modelId}
+                    onChange={(e) => handleModelFormChange('modelId', e.target.value)}
+                    readOnly={drawerModelId !== null}
+                    style={drawerModelId !== null ? { backgroundColor: '#f1f5f9', color: 'var(--text-muted)' } : {}}
+                  />
+                  {modelErrors.modelId && <div className="error-text">{modelErrors.modelId}</div>}
+                </div>
+
+                <div className="form-group-row">
+                  <div className="form-group">
+                    <label className="form-label">Model Type</label>
+                    <select 
+                      className="input-field" 
+                      value={modelForm.type}
+                      onChange={(e) => handleModelFormChange('type', e.target.value)}
+                    >
+                      <option value="AC">AC</option>
+                      <option value="DC">DC</option>
+                      <option value="AC&DC">AC&DC</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Total Power <span>*</span></label>
+                    <input 
+                      type="text" 
+                      className={`input-field ${modelErrors.totalPower ? 'error' : ''}`}
+                      placeholder="e.g. 50 kW"
+                      value={modelForm.totalPower}
+                      onChange={(e) => handleModelFormChange('totalPower', e.target.value)}
+                    />
+                    {modelErrors.totalPower && <div className="error-text">{modelErrors.totalPower}</div>}
+                  </div>
+                </div>
+
+                <div className="form-group-row" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                  <div className="form-group">
+                    <label className="form-label">Connectors Count</label>
+                    <input 
+                      type="number" 
+                      min="1"
+                      className="input-field"
+                      value={modelForm.numConnectors}
+                      onChange={(e) => handleModelFormChange('numConnectors', e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Connection Type</label>
+                    <select 
+                      className="input-field"
+                      value={modelForm.builtin ? 'cable' : 'builtin'}
+                      onChange={(e) => handleModelFormChange('builtin', e.target.value === 'cable')}
+                    >
+                      <option value="builtin">Build in</option>
+                      <option value="cable">Cable</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <span className="form-label">Connectors Settings</span>
+                  {modelForm.connectorsList.map((c, idx) => {
+                    const connErr = modelErrors.connectors?.[idx];
+                    return (
+                      <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '10px', padding: '10px', background: '#F8FAFC', borderRadius: '8px' }}>
+                        <div style={{ gridColumn: 'span 3', fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', borderBottom: '1px solid #E2E8F0', paddingBottom: '4px', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          {['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth', 'Tenth'][idx] || `${idx + 1}th`} Connector
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label" style={{ fontSize: '11px' }}>Label <span>*</span></label>
+                          <SearchableDropdown
+                            options={connectorTypes}
+                            value={c.label}
+                            onChange={(val) => updateModelConnectorField(idx, 'label', val)}
+                            placeholder="Select Type..."
+                            error={connErr}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label" style={{ fontSize: '11px' }}>Power (kW)</label>
+                          <input 
+                            type="text" 
+                            className="input-field" 
+                            placeholder="50 kW" 
+                            value={c.power}
+                            onChange={(e) => updateModelConnectorField(idx, 'power', e.target.value)}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label" style={{ fontSize: '11px' }}>Type</label>
+                          <select 
+                            className="input-field" 
+                            value={c.kind}
+                            onChange={(e) => updateModelConnectorField(idx, 'kind', e.target.value)}
+                          >
+                            <option value="AC">AC</option>
+                            <option value="DC">DC</option>
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </Drawer>
+
+          {/* CONNECTOR TYPE EDIT MODAL */}
+          <Modal
+            isOpen={connectorModalData !== null}
+            onClose={() => setConnectorModalData(null)}
+            title={connectorModalData?.isEdit ? "Edit Connector Type" : "Add Connector Type"}
+            footerButtons={
+              <>
+                <button className="btn btn-secondary" onClick={() => setConnectorModalData(null)}>Cancel</button>
+                <button className="btn btn-primary" onClick={handleSaveConnector}>Save</button>
+              </>
+            }
+          >
+            <div className="form-group">
+              <label className="form-label">Connector Name <span>*</span></label>
+              <input 
+                type="text" 
+                className="input-field" 
+                placeholder="e.g. CCS3"
+                value={connectorInputValue}
+                onChange={(e) => setConnectorInputValue(e.target.value)}
+              />
+            </div>
+          </Modal>
+
+          {/* CONNECTOR DELETE CONFIRM MODAL */}
+          <Modal
+            isOpen={connectorConfirmDelete !== null}
+            onClose={() => setConnectorConfirmDelete(null)}
+            title="Delete Connector Type"
+            footerButtons={
+              <>
+                <button className="btn btn-secondary" onClick={() => setConnectorConfirmDelete(null)}>Cancel</button>
+                <button className="btn btn-danger" onClick={() => { deleteConnectorType(connectorConfirmDelete.id); setConnectorConfirmDelete(null); }}>Delete</button>
+              </>
+            }
+          >
+            <p style={{ color: 'var(--badge-inactive-text)', fontWeight: '600' }}>⚠️ Confirm Permanent Deletion</p>
+            <p>Are you sure you want to delete connector type <strong>{connectorConfirmDelete?.name}</strong>?</p>
+          </Modal>
+
+          {/* AMENITY ADD/EDIT MODAL */}
+          <Modal
+            isOpen={amenityModalData !== null}
+            onClose={() => setAmenityModalData(null)}
+            title={amenityModalData?.isEdit ? "Edit Amenity" : "Add Amenity"}
+            footerButtons={
+              <>
+                <button className="btn btn-secondary" onClick={() => setAmenityModalData(null)}>Cancel</button>
+                <button className="btn btn-primary" onClick={handleSaveAmenity}>Save</button>
+              </>
+            }
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div className="form-group">
+                <label className="form-label">Amenity Name <span>*</span></label>
+                <input 
+                  type="text" 
+                  className="input-field" 
+                  placeholder="e.g. Playground"
+                  value={amenityNameInput}
+                  onChange={(e) => setAmenityNameInput(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Select Amenity Icon</label>
+                <div className="icon-picker-grid">
+                  {['wifi', 'coffee', 'parking', 'restroom', 'shop', 'seating', 'charger', 'info'].map(iconName => (
+                    <button 
+                      key={iconName}
+                      className={`icon-picker-btn ${amenityIconSelected === iconName ? 'selected' : ''}`}
+                      onClick={() => setAmenityIconSelected(iconName)}
+                    >
+                      <Icon name={iconName} />
+                      <span style={{ fontSize: '10px', textTransform: 'capitalize' }}>{iconName}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Modal>
+
+          {/* AMENITY DELETE CONFIRM MODAL */}
+          <Modal
+            isOpen={amenityConfirmDelete !== null}
+            onClose={() => setAmenityConfirmDelete(null)}
+            title="Delete Amenity"
+            footerButtons={
+              <>
+                <button className="btn btn-secondary" onClick={() => setAmenityConfirmDelete(null)}>Cancel</button>
+                <button className="btn btn-danger" onClick={() => { deleteAmenity(amenityConfirmDelete.id); setAmenityConfirmDelete(null); }}>Delete</button>
+              </>
+            }
+          >
+            <p style={{ color: 'var(--badge-inactive-text)', fontWeight: '600' }}>⚠️ Confirm Permanent Deletion</p>
+            <p>Are you sure you want to delete amenity <strong>{amenityConfirmDelete?.name}</strong>?</p>
+          </Modal>
+
+          {/* MODEL DELETE CONFIRM MODAL */}
+          <Modal
+            isOpen={modelConfirmDelete !== null}
+            onClose={() => setModelConfirmDelete(null)}
+            title="Delete Charging Model"
+            footerButtons={
+              <>
+                <button className="btn btn-secondary" onClick={() => setModelConfirmDelete(null)}>Cancel</button>
+                <button className="btn btn-danger" onClick={handleConfirmDeleteModel}>Delete</button>
+              </>
+            }
+          >
+            <p style={{ color: 'var(--badge-inactive-text)', fontWeight: '600' }}>⚠️ Confirm Permanent Deletion</p>
+            <p>Are you sure you want to delete charger model <strong>{modelConfirmDelete?.name}</strong>?</p>
+          </Modal>
+        </>
+      );
+    };
+
+    // --- MAIN APP LAYOUT & ROUTING ---
+    const App = () => {
+      const { currentRoute } = useContext(CpoContext);
+
+      return (
+        <>
+          <Sidebar />
+          <div className="main-layout">
+            <Header />
+            <div className="content-area">
+              {currentRoute === 'stations' && <StationsList />}
+              {currentRoute === 'create-station' && <CreateStationWizard />}
+              {currentRoute === 'edit-station' && <EditStationWizard />}
+              {currentRoute === 'points' && <PointsList />}
+              {currentRoute === 'config' && <AssetConfigurations />}
+            </div>
+          </div>
+        </>
+      );
+    };
+
+    // Render application
+    const container = document.getElementById('root');
+    const root = ReactDOM.createRoot(container);
+    root.render(
+      <CpoProvider>
+        <App />
+      </CpoProvider>
+    );
+  </script>
+</body>
+</html>
