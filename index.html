@@ -1055,7 +1055,7 @@
     };
 
     // Searchable Dropdown Helper (extends to support add-new creation row)
-    const SearchableDropdown = ({ options, value, onChange, placeholder, required, error, onAddNew, addNewPlaceholder }) => {
+    const SearchableDropdown = ({ options, value, onChange, placeholder, required, error, onAddNew, addNewPlaceholder, disabled }) => {
       const [isOpen, setIsOpen] = useState(false);
       const [searchQuery, setSearchQuery] = useState('');
       const wrapperRef = useRef(null);
@@ -1082,8 +1082,16 @@
         <div className="amenities-selector-wrapper" ref={wrapperRef}>
           <div 
             className={`input-field ${error ? 'error' : ''}`}
-            onClick={() => setIsOpen(!isOpen)}
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', minHeight: '38px', background: '#fff' }}
+            onClick={() => { if (!disabled) setIsOpen(!isOpen); }}
+            style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              cursor: disabled ? 'not-allowed' : 'pointer', 
+              minHeight: '38px', 
+              background: disabled ? '#F1F5F9' : '#fff',
+              opacity: disabled ? 0.6 : 1
+            }}
           >
             <span>{selectedOption ? selectedOption.name : placeholder}</span>
             <span style={{ fontSize: '10px', color: '#94A3B8' }}>▼</span>
@@ -2018,7 +2026,8 @@
           errs.pointIds = pidErrs;
         }
 
-        if (addPointModelId) {
+        // FIXED: Only validate point tariffs if station tariff is NOT set (User Request)
+        if (addPointModelId && !stationDetails.tariffId) {
           if (addPointTariffMode === 'same') {
             if (!addPointTariffId) errs.tariffId = "Required.";
           } else {
@@ -2085,21 +2094,24 @@
         let isValid = true;
         const errors = {};
 
-        chargers.forEach((c, idx) => {
-          const cErrs = {};
-          if (c.tariffMode === 'same') {
-            if (!c.tariffId) { cErrs.tariffId = "Required."; isValid = false; }
-          } else {
-            const model = models.find(m => m.id === c.modelId);
-            const connErrs = [];
-            model?.connectorTypes.forEach((conn, connIdx) => {
-              const assigned = c.connectorTariffs.find(ct => ct.label === conn.label);
-              if (!assigned?.tariffId) { connErrs[connIdx] = "Required."; isValid = false; }
-            });
-            if (connErrs.length > 0) cErrs.connectorTariffs = connErrs;
-          }
-          if (Object.keys(cErrs).length > 0) errors[idx] = cErrs;
-        });
+        // FIXED: Bypass point tariff validation if station tariff is set (User Request)
+        if (!stationDetails.tariffId) {
+          chargers.forEach((c, idx) => {
+            const cErrs = {};
+            if (c.tariffMode === 'same') {
+              if (!c.tariffId) { cErrs.tariffId = "Required."; isValid = false; }
+            } else {
+              const model = models.find(m => m.id === c.modelId);
+              const connErrs = [];
+              model?.connectorTypes.forEach((conn, connIdx) => {
+                const assigned = c.connectorTariffs.find(ct => ct.label === conn.label);
+                if (!assigned?.tariffId) { connErrs[connIdx] = "Required."; isValid = false; }
+              });
+              if (connErrs.length > 0) cErrs.connectorTariffs = connErrs;
+            }
+            if (Object.keys(cErrs).length > 0) errors[idx] = cErrs;
+          });
+        }
 
         if (!isStep1Valid || !isValid) {
           if (!isStep1Valid) {
@@ -2163,11 +2175,6 @@
                     {basicsErrors.amenity && <div className="error-text">{basicsErrors.amenity}</div>}
                   </div>
                 </div>
-                {/* FIXED: Add Station-Level Tariff field overriding other levels per User Request */}
-                <div className="form-group">
-                  <label className="form-label">Station Tariff (Overrides Point & Connector Tariffs)</label>
-                  <SearchableDropdown options={INITIAL_TARIFFS} value={stationDetails.tariffId} onChange={(val) => setStationDetails({ ...stationDetails, tariffId: val })} placeholder="Select Station Tariff (Optional)..." />
-                </div>
                 <div className="form-group">
                   <label className="form-label">Address <span>*</span></label>
                   <input type="text" className={`input-field ${basicsErrors.address ? 'error' : ''}`} value={stationDetails.address} onChange={(e) => setStationDetails({ ...stationDetails, address: e.target.value })} />
@@ -2183,6 +2190,18 @@
 
             {step === 2 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* FIXED: Add Station-Level Tariff field overriding other levels in Step 2 per User Request */}
+                <div className="form-group" style={{ marginBottom: '20px', padding: '16px', background: '#F8FAFC', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                  <label className="form-label" style={{ fontWeight: '600' }}>Station-Level Tariff (Overrides Lower Levels)</label>
+                  <SearchableDropdown 
+                    options={INITIAL_TARIFFS} 
+                    value={stationDetails.tariffId} 
+                    onChange={(val) => setStationDetails({ ...stationDetails, tariffId: val })} 
+                    placeholder="No Station Tariff (Optional)..." 
+                  />
+                  {stationDetails.tariffId && <span style={{ fontSize: '11px', color: 'var(--primary)', marginTop: '6px', display: 'block' }}>⚠️ Lower-level point and connector tariff selections are locked/overridden.</span>}
+                </div>
+
                 <div className="review-card-title">Charging Points</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {chargers.map((charger, idx) => {
@@ -2273,8 +2292,16 @@
 
                                 {charger.tariffMode === 'same' || modelObj.connectorTypes.length === 1 ? (
                                   <div className="form-group">
-                                    <SearchableDropdown options={INITIAL_TARIFFS} value={charger.tariffId} onChange={(val) => updateChargerField(idx, 'tariffId', val)} placeholder="Select Tariff..." error={errors.tariffId} />
-                                    {errors.tariffId && <div className="error-text">{errors.tariffId}</div>}
+                                    {/* FIXED: Disable and display placeholder if station tariff is active (User Request) */}
+                                    <SearchableDropdown 
+                                      options={INITIAL_TARIFFS} 
+                                      value={stationDetails.tariffId ? '' : charger.tariffId} 
+                                      onChange={(val) => updateChargerField(idx, 'tariffId', val)} 
+                                      placeholder={stationDetails.tariffId ? "Overridden by Station Tariff" : "Select Tariff..."} 
+                                      error={stationDetails.tariffId ? null : errors.tariffId} 
+                                      disabled={!!stationDetails.tariffId}
+                                    />
+                                    {errors.tariffId && !stationDetails.tariffId && <div className="error-text">{errors.tariffId}</div>}
                                   </div>
                                 ) : (
                                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
@@ -2284,14 +2311,22 @@
                                       return (
                                         <div className="form-group" key={cidx}>
                                           <label className="form-label">{conn.label} Tariff</label>
-                                          <SearchableDropdown options={INITIAL_TARIFFS} value={ct ? ct.tariffId : ''} onChange={(val) => {
-                                            const updated = [...charger.connectorTariffs];
-                                            const existIdx = updated.findIndex(u => u.label === conn.label);
-                                            if (existIdx > -1) updated[existIdx].tariffId = val;
-                                            else updated.push({ label: conn.label, tariffId: val });
-                                            updateChargerField(idx, 'connectorTariffs', updated);
-                                          }} placeholder="Select Tariff..." error={cErr} />
-                                          {cErr && <div className="error-text">{cErr}</div>}
+                                          {/* FIXED: Disable and display placeholder if station tariff is active (User Request) */}
+                                          <SearchableDropdown 
+                                            options={INITIAL_TARIFFS} 
+                                            value={stationDetails.tariffId ? '' : (ct ? ct.tariffId : '')} 
+                                            onChange={(val) => {
+                                              const updated = [...charger.connectorTariffs];
+                                              const existIdx = updated.findIndex(u => u.label === conn.label);
+                                              if (existIdx > -1) updated[existIdx].tariffId = val;
+                                              else updated.push({ label: conn.label, tariffId: val });
+                                              updateChargerField(idx, 'connectorTariffs', updated);
+                                            }} 
+                                            placeholder={stationDetails.tariffId ? "Overridden by Station Tariff" : "Select Tariff..."} 
+                                            error={stationDetails.tariffId ? null : cErr} 
+                                            disabled={!!stationDetails.tariffId}
+                                          />
+                                          {cErr && !stationDetails.tariffId && <div className="error-text">{cErr}</div>}
                                         </div>
                                       );
                                     })}
@@ -2370,8 +2405,16 @@
                       </div>
                       {addPointTariffMode === 'same' || models.find(m => m.id === addPointModelId)?.connectorTypes.length === 1 ? (
                         <div className="form-group">
-                          <SearchableDropdown options={INITIAL_TARIFFS} value={addPointTariffId} onChange={(val) => setAddPointTariffId(val)} placeholder="Select Tariff..." error={addPointErrors.tariffId} />
-                          {addPointErrors.tariffId && <div className="error-text">{addPointErrors.tariffId}</div>}
+                          {/* FIXED: Disable and display placeholder if station tariff is active (User Request) */}
+                          <SearchableDropdown 
+                            options={INITIAL_TARIFFS} 
+                            value={stationDetails.tariffId ? '' : addPointTariffId} 
+                            onChange={(val) => setAddPointTariffId(val)} 
+                            placeholder={stationDetails.tariffId ? "Overridden by Station Tariff" : "Select Tariff..."} 
+                            error={stationDetails.tariffId ? null : addPointErrors.tariffId} 
+                            disabled={!!stationDetails.tariffId}
+                          />
+                          {addPointErrors.tariffId && !stationDetails.tariffId && <div className="error-text">{addPointErrors.tariffId}</div>}
                         </div>
                       ) : (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
@@ -2381,12 +2424,20 @@
                             return (
                               <div className="form-group" key={cidx}>
                                 <label className="form-label">{conn.label} Tariff</label>
-                                <SearchableDropdown options={INITIAL_TARIFFS} value={val} onChange={(tval) => {
-                                  const updated = [...addPointConnectorTariffs];
-                                  updated[cidx] = { label: conn.label, tariffId: tval };
-                                  setAddPointConnectorTariffs(updated);
-                                }} placeholder="Select Tariff..." error={cErr} />
-                                {cErr && <div className="error-text">{cErr}</div>}
+                                {/* FIXED: Disable and display placeholder if station tariff is active (User Request) */}
+                                <SearchableDropdown 
+                                  options={INITIAL_TARIFFS} 
+                                  value={stationDetails.tariffId ? '' : val} 
+                                  onChange={(tval) => {
+                                    const updated = [...addPointConnectorTariffs];
+                                    updated[cidx] = { label: conn.label, tariffId: tval };
+                                    setAddPointConnectorTariffs(updated);
+                                  }} 
+                                  placeholder={stationDetails.tariffId ? "Overridden by Station Tariff" : "Select Tariff..."} 
+                                  error={stationDetails.tariffId ? null : cErr} 
+                                  disabled={!!stationDetails.tariffId}
+                                />
+                                {cErr && !stationDetails.tariffId && <div className="error-text">{cErr}</div>}
                               </div>
                             );
                           })}
