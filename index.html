@@ -599,33 +599,7 @@
         return { success: true };
       };
 
-      const reassignPointImmediately = (pointId, targetStationId) => {
-        const sourcePoint = points.find(p => p.id === pointId && !p.isHistorical);
-        if (!sourcePoint) return { success: false, message: "Point not found." };
-
-        const oldPointGhost = {
-          ...sourcePoint,
-          isHistorical: true,
-          reassignedToStationId: targetStationId
-        };
-
-        const newPointActive = {
-          ...sourcePoint,
-          stationId: targetStationId,
-          isHistorical: false,
-          sessions30: 0,
-          activeSessionNow: false
-        };
-
-        const updatedPoints = [
-          ...points.map(p => (p.id === pointId && !p.isHistorical ? oldPointGhost : p)),
-          newPointActive
-        ];
-
-        setPoints(updatedPoints);
-        setStations(syncStationStatuses(updatedPoints, stations));
-        return { success: true };
-      };
+      // FIXED: Removed reassignPointImmediately (Fix 4)
 
       const closeStationOnApp = (stationId) => {
         // Close station
@@ -719,11 +693,11 @@
         let currentPointsList = [...points];
 
         updatedChargersList.forEach(charger => {
+          // FIXED: Use manually entered charger.id instead of auto-generation (Fix 3)
           if (charger.isNew) {
-            const newPointId = `CP-GEN-${Math.floor(100000 + Math.random() * 900000)}`;
             const modelObj = models.find(m => m.id === charger.modelId);
             currentPointsList.push({
-              id: newPointId,
+              id: charger.id,
               name: charger.name || `${modelObj.name} — Auto Point`,
               modelId: charger.modelId,
               tariffId: charger.tariffMode === 'same' ? charger.tariffId : null,
@@ -735,7 +709,8 @@
               sessions30: 0,
               activeSessionNow: false,
               isHistorical: false,
-              reassignedToStationId: null
+              reassignedToStationId: null,
+              appStatus: 'Open'
             });
           } else {
             const existingPoint = currentPointsList.find(p => p.id === charger.id && !p.isHistorical);
@@ -826,7 +801,7 @@
           deleteStation,
           reopenPoint,
           deletePoint,
-          reassignPointImmediately,
+          // FIXED: Removed reassignPointImmediately from provider export (Fix 4)
           addStation,
           updateStation,
           closeStationOnApp,
@@ -1927,6 +1902,8 @@
       const [stationDetails, setStationDetails] = useState({ name: '', address: '', description: '', landlord: '', amenity: '' });
       const [chargers, setChargers] = useState([]);
       const [formErrors, setFormErrors] = useState({});
+      // FIXED: Added basicsErrors state for Step 1 validation (Fix 1)
+      const [basicsErrors, setBasicsErrors] = useState({});
 
       useEffect(() => {
         if (station) {
@@ -1964,16 +1941,58 @@
       const [addPointConnectorTariffs, setAddPointConnectorTariffs] = useState([]);
       const [addPointCommunityId, setAddPointCommunityId] = useState('');
       const [addPointErrors, setAddPointErrors] = useState({});
+      // FIXED: Added addPointIds state for manual Point ID input (Fix 3)
+      const [addPointIds, setAddPointIds] = useState(['']);
 
       const handleAddPointModelChange = (val) => {
         setAddPointModelId(val);
         const model = models.find(m => m.id === val);
         setAddPointConnectorTariffs(model ? model.connectorTypes.map(c => ({ label: c.label, tariffId: '' })) : []);
+        // FIXED: Reset manual point IDs array with correct count size (Fix 3)
+        setAddPointIds(Array(addPointCount).fill(''));
+      };
+
+      // FIXED: Added validateStep1 validation helper for Step 1 basics validation (Fix 1)
+      const validateStep1 = () => {
+        const errors = {};
+        if (!stationDetails.name || !stationDetails.name.trim()) errors.name = "Name is required.";
+        if (!stationDetails.landlord) errors.landlord = "Landlord is required.";
+        if (!stationDetails.address || !stationDetails.address.trim()) errors.address = "Address is required.";
+        if (!stationDetails.description || !stationDetails.description.trim()) errors.description = "Description is required.";
+        if (!stationDetails.amenity) errors.amenity = "At least one amenity is required.";
+        setBasicsErrors(errors);
+        return Object.keys(errors).length === 0;
       };
 
       const handleAddPointSubmit = () => {
         const errs = {};
         if (!addPointModelId) errs.modelId = "Required.";
+
+        // FIXED: Manual Point ID validation logic (Fix 3)
+        const existingPointIds = points.map(p => p.id.toLowerCase());
+        const currentChargerIds = chargers.map(c => c.id.toLowerCase());
+        const typedPointIds = [];
+        const pidErrs = [];
+
+        addPointIds.forEach((pid, pidx) => {
+          const clean = pid.trim();
+          if (!clean) {
+            pidErrs[pidx] = "Required.";
+          } else if (existingPointIds.includes(clean.toLowerCase())) {
+            pidErrs[pidx] = "Already exists.";
+          } else if (currentChargerIds.includes(clean.toLowerCase())) {
+            pidErrs[pidx] = "Already in station.";
+          } else if (typedPointIds.includes(clean.toLowerCase())) {
+            pidErrs[pidx] = "Duplicate.";
+          } else {
+            typedPointIds.push(clean.toLowerCase());
+          }
+        });
+
+        if (pidErrs.some(e => e)) {
+          errs.pointIds = pidErrs;
+        }
+
         if (addPointModelId) {
           if (addPointTariffMode === 'same') {
             if (!addPointTariffId) errs.tariffId = "Required.";
@@ -1996,7 +2015,7 @@
         const newPoints = [];
         for (let i = 0; i < addPointCount; i++) {
           newPoints.push({
-            id: `PENDING-AUTO-${Math.random()}`,
+            id: addPointIds[i].trim(), // FIXED: Use manually entered Point ID (Fix 3)
             name: `${modelObj.name} — Point ${chargers.length + i + 1}`,
             modelId: addPointModelId,
             tariffMode: addPointTariffMode,
@@ -2012,6 +2031,7 @@
         setChargers([...chargers, ...newPoints]);
         setAddPointModelId('');
         setAddPointCount(1);
+        setAddPointIds(['']); // FIXED: Reset addPointIds array (Fix 3)
         setAddPointTariffMode('same');
         setAddPointTariffId('');
         setAddPointCommunityId('');
@@ -2034,6 +2054,9 @@
       };
 
       const handleSave = () => {
+        // FIXED: Re-run Step 1 validation inside handleSave (Fix 1)
+        const isStep1Valid = validateStep1();
+
         let isValid = true;
         const errors = {};
 
@@ -2053,9 +2076,14 @@
           if (Object.keys(cErrs).length > 0) errors[idx] = cErrs;
         });
 
-        if (!isValid) {
-          setFormErrors(errors);
-          alert("Fill all required tariffs before saving.");
+        if (!isStep1Valid || !isValid) {
+          if (!isStep1Valid) {
+            setStep(1); // switch back to Step 1 to show basics errors
+            alert("Please fix basics validation errors before saving.");
+          } else {
+            setFormErrors(errors);
+            alert("Fill all required tariffs before saving.");
+          }
           return;
         }
 
@@ -2068,11 +2096,19 @@
       return (
         <div className="wizard-container">
           <div className="wizard-header">
-            <h2>Edit Station: {station.id}</h2>
+            {/* FIXED: Show station status in the Edit wizard header (Fix 6) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <h2>Edit Station: {station.id}</h2>
+              <StatusBadge status={station.status} />
+              <span className={`badge ${station.appStatus === 'Open' ? 'badge-active' : 'badge-inactive'}`}>
+                {station.appStatus || 'Open'}
+              </span>
+            </div>
             <div className="step-indicator">
               <div className={`step-indicator-node ${step === 1 ? 'active' : ''}`} onClick={() => setStep(1)}><div className="step-dot">1</div><span className="step-label">Basics</span></div>
               <div className="step-connector"></div>
-              <div className={`step-indicator-node ${step === 2 ? 'active' : ''}`} onClick={() => setStep(2)}><div className="step-dot">2</div><span className="step-label">Chargers</span></div>
+              {/* FIXED: Block navigation if Step 1 is invalid (Fix 1) */}
+              <div className={`step-indicator-node ${step === 2 ? 'active' : ''}`} onClick={() => { if (validateStep1()) setStep(2); }}><div className="step-dot">2</div><span className="step-label">Chargers</span></div>
             </div>
           </div>
 
@@ -2085,27 +2121,32 @@
                     <input type="text" className="input-field" value={station.id} readOnly style={{ backgroundColor: '#F1F5F9' }} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Station Name</label>
-                    <input type="text" className="input-field" value={stationDetails.name} onChange={(e) => setStationDetails({ ...stationDetails, name: e.target.value })} />
+                    <label className="form-label">Station Name <span>*</span></label>
+                    <input type="text" className={`input-field ${basicsErrors.name ? 'error' : ''}`} value={stationDetails.name} onChange={(e) => setStationDetails({ ...stationDetails, name: e.target.value })} />
+                    {basicsErrors.name && <div className="error-text">{basicsErrors.name}</div>}
                   </div>
                 </div>
                 <div className="form-group-row">
                   <div className="form-group">
-                    <label className="form-label">Landlord</label>
-                    <SearchableDropdown options={INITIAL_LANDLORDS} value={stationDetails.landlord} onChange={(val) => setStationDetails({ ...stationDetails, landlord: val })} />
+                    <label className="form-label">Landlord <span>*</span></label>
+                    <SearchableDropdown options={INITIAL_LANDLORDS} value={stationDetails.landlord} onChange={(val) => setStationDetails({ ...stationDetails, landlord: val })} error={basicsErrors.landlord} />
+                    {basicsErrors.landlord && <div className="error-text">{basicsErrors.landlord}</div>}
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Primary Amenity (Single Select)</label>
-                    <SearchableDropdown options={amenities.map(a => ({ id: a.name, name: a.name }))} value={stationDetails.amenity} onChange={(val) => setStationDetails({ ...stationDetails, amenity: val })} />
+                    <label className="form-label">Primary Amenity (Single Select) <span>*</span></label>
+                    <SearchableDropdown options={amenities.map(a => ({ id: a.name, name: a.name }))} value={stationDetails.amenity} onChange={(val) => setStationDetails({ ...stationDetails, amenity: val })} error={basicsErrors.amenity} />
+                    {basicsErrors.amenity && <div className="error-text">{basicsErrors.amenity}</div>}
                   </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Address</label>
-                  <input type="text" className="input-field" value={stationDetails.address} onChange={(e) => setStationDetails({ ...stationDetails, address: e.target.value })} />
+                  <label className="form-label">Address <span>*</span></label>
+                  <input type="text" className={`input-field ${basicsErrors.address ? 'error' : ''}`} value={stationDetails.address} onChange={(e) => setStationDetails({ ...stationDetails, address: e.target.value })} />
+                  {basicsErrors.address && <div className="error-text">{basicsErrors.address}</div>}
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Description</label>
-                  <textarea className="input-field" rows="3" value={stationDetails.description} onChange={(e) => setStationDetails({ ...stationDetails, description: e.target.value })} />
+                  <label className="form-label">Description <span>*</span></label>
+                  <textarea className={`input-field ${basicsErrors.description ? 'error' : ''}`} rows="3" value={stationDetails.description} onChange={(e) => setStationDetails({ ...stationDetails, description: e.target.value })} />
+                  {basicsErrors.description && <div className="error-text">{basicsErrors.description}</div>}
                 </div>
               </div>
             )}
@@ -2117,13 +2158,28 @@
                   {chargers.map((charger, idx) => {
                     const modelObj = models.find(m => m.id === charger.modelId);
                     const errors = formErrors[idx] || {};
+                    
+                    // FIXED: Pull point statuses live from points array (Fix 5)
+                    const livePoint = points.find(p => p.id === charger.id && !p.isHistorical);
+                    const connStatus = livePoint ? livePoint.status : 'Undefined';
+                    const appStatus = livePoint ? (livePoint.appStatus || 'Open') : 'Open';
+                    
+                    // FIXED: Restrict Remove button to Undefined-status points only (Fix 2)
+                    const isRemoveDisabled = !charger.isNew && connStatus !== 'Undefined';
+
                     return (
                       <div key={charger.id} className="charger-edit-item" style={charger.pendingReassignTo ? { opacity: 0.6 } : {}}>
                         <div className="charger-edit-item-header">
-                          <div className="charger-edit-item-title">
-                            <strong>{charger.id.startsWith('PENDING-AUTO-') ? '(Auto ID Generated)' : charger.id}</strong>
+                          {/* FIXED: Show point connection and app statuses next to name (Fix 5) */}
+                          <div className="charger-edit-item-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <strong>{charger.id}</strong>
+                            {charger.isNew && <span className="badge" style={{ fontSize: '9px', backgroundColor: '#E0F2FE', color: '#0369A1' }}>NEW</span>}
                             <span>—</span>
                             <span>{charger.name}</span>
+                            <StatusBadge status={connStatus} />
+                            <span className={`badge ${appStatus === 'Open' ? 'badge-active' : 'badge-inactive'}`}>
+                              {appStatus}
+                            </span>
                           </div>
                           <div className="charger-edit-item-actions">
                             {charger.pendingReassignTo ? (
@@ -2135,7 +2191,15 @@
                               <>
                                 <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => setChargers(chargers.map((c, i) => i === idx ? { ...c, isEditingInline: !c.isEditingInline } : c))}>Configure</button>
                                 {!charger.isNew && <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', color: 'var(--primary)' }} onClick={() => { setReassignIndex(idx); setReassignStationId(''); }}>Reassign</button>}
-                                <button className="btn btn-danger" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => setChargers(chargers.filter((_, i) => i !== idx))}>Remove</button>
+                                
+                                {/* FIXED: Disable Remove button for Active/Inactive points with tooltip (Fix 2) */}
+                                {isRemoveDisabled ? (
+                                  <Tooltip text="Only points with Undefined status can be removed.">
+                                    <button className="btn btn-danger" style={{ padding: '6px 12px', fontSize: '12px', opacity: 0.5, cursor: 'not-allowed' }} disabled>Remove</button>
+                                  </Tooltip>
+                                ) : (
+                                  <button className="btn btn-danger" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => setChargers(chargers.filter((_, i) => i !== idx))}>Remove</button>
+                                )}
                               </>
                             )}
                           </div>
@@ -2143,6 +2207,23 @@
 
                         {charger.isEditingInline && !charger.pendingReassignTo && (
                           <div className="inline-form-grid">
+                            {/* FIXED: Add explicit, clearly non-editable Model field (Fix 7) */}
+                            <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                              <label className="form-label">Model (View-Only)</label>
+                              <div style={{ padding: '8px 12px', backgroundColor: '#F1F5F9', border: '1px solid var(--border-color)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                                <span style={{ fontWeight: '500', color: 'var(--text-main)' }}>{modelObj ? modelObj.name : charger.modelId}</span>
+                                {modelObj && (
+                                  <div className="spec-chips" style={{ margin: 0 }}>
+                                    {modelObj.connectorTypes.map((c, cidx) => (
+                                      <span key={cidx} className={`spec-chip ${c.kind === 'DC' ? 'dc' : ''}`}>
+                                        {c.label} ({c.power})
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
                             <div className="form-group">
                               <label className="form-label">Point Name</label>
                               <input type="text" className="input-field" value={charger.name} onChange={(e) => updateChargerField(idx, 'name', e.target.value)} />
@@ -2210,13 +2291,49 @@
                     </div>
                     <div className="form-group">
                       <label className="form-label">Count</label>
-                      <input type="number" className="input-field" min="1" value={addPointCount} onChange={(e) => setAddPointCount(Math.max(1, parseInt(e.target.value) || 1))} />
+                      {/* FIXED: Update addPointIds array count dynamically when count changes (Fix 3) */}
+                      <input type="number" className="input-field" min="1" value={addPointCount} onChange={(e) => {
+                        const count = Math.max(1, parseInt(e.target.value) || 1);
+                        setAddPointCount(count);
+                        setAddPointIds(prev => {
+                          const newIds = [...prev];
+                          while (newIds.length < count) newIds.push('');
+                          newIds.splice(count);
+                          return newIds;
+                        });
+                      }} />
                     </div>
                   </div>
 
+                  {/* FIXED: Manual Point ID inputs rendering, matching Create flow (Fix 3) */}
                   {addPointModelId && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                      <div className="form-group">
+                        <label className="form-label">Point IDs <span>*</span></label>
+                        <div className="ids-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' }}>
+                          {addPointIds.map((pid, pidx) => {
+                            const err = addPointErrors.pointIds?.[pidx];
+                            return (
+                              <div key={pidx}>
+                                <input 
+                                  type="text" 
+                                  className={`input-field ${err ? 'error' : ''}`} 
+                                  placeholder={`Point ID #${pidx + 1}`} 
+                                  value={pid} 
+                                  onChange={(e) => {
+                                    const updated = [...addPointIds];
+                                    updated[pidx] = e.target.value;
+                                    setAddPointIds(updated);
+                                  }} 
+                                />
+                                {err && <div className="error-text">{err}</div>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
                         <label className="form-label">Tariff Selection</label>
                         {models.find(m => m.id === addPointModelId)?.connectorTypes.length > 1 && (
                           <div className="filter-toggle-mode" style={{ width: '220px' }}>
@@ -2293,7 +2410,8 @@
 
     // --- SCREEN 4: CHARGING POINTS NETWORK LIST ---
     const PointsList = () => {
-      const { points, stations, models, reopenPoint, deletePoint, reassignPointImmediately, closePointOnApp, openPointOnApp } = useContext(CpoContext);
+      // FIXED: Removed reassignPointImmediately from useContext (Fix 4)
+      const { points, stations, models, reopenPoint, deletePoint, closePointOnApp, openPointOnApp } = useContext(CpoContext);
       
       const [globalSearch, setGlobalSearch] = useState('');
       
@@ -2306,8 +2424,7 @@
       // Modals
       const [deleteModalPoint, setDeleteModalPoint] = useState(null);
       const [closeAppModalPoint, setCloseAppModalPoint] = useState(null);
-      const [reassignModalPoint, setReassignModalPoint] = useState(null);
-      const [reassignStationId, setReassignStationId] = useState('');
+      // FIXED: Removed reassignModalPoint and reassignStationId states (Fix 4)
 
       useEffect(() => {
         const handleClickOutside = (e) => {
@@ -2506,7 +2623,7 @@
                                     {p.status === 'Closed' && (
                                       <button className="row-menu-item" style={{ color: 'var(--primary)' }} onClick={() => { reopenPoint(p.id); setActiveRowMenu(null); }}>Reopen</button>
                                     )}
-                                    <button className="row-menu-item" style={{ color: 'var(--primary)' }} onClick={() => { setReassignModalPoint(p); setReassignStationId(''); setActiveRowMenu(null); }}>Reassign</button>
+                                    {/* FIXED: Removed Reassign action from PointsList row menu (Fix 4) */}
                                   </div>
                                 )}
                               </div>
@@ -2561,28 +2678,7 @@
             <p style={{ color: 'var(--primary)', fontWeight: '600' }}>⚠️ Close Point on Customer App</p>
             <p>Are you sure you want to close charging point <strong>{closeAppModalPoint?.id}</strong>? The point will be closed and users won't be able to view it on the app. The connection status will remain unchanged.</p>
           </Modal>
-
-          {/* Reassign Immediately Modal */}
-          <Modal
-            isOpen={reassignModalPoint !== null}
-            onClose={() => setReassignModalPoint(null)}
-            title={`Immediate Point Reassignment: ${reassignModalPoint?.id}`}
-            footerButtons={
-              <>
-                <button className="btn btn-secondary" onClick={() => setReassignModalPoint(null)}>Cancel</button>
-                <button className="btn btn-primary" disabled={!reassignStationId} onClick={() => {
-                  reassignPointImmediately(reassignModalPoint.id, reassignStationId);
-                  setReassignModalPoint(null);
-                }}>Confirm Reassign</button>
-              </>
-            }
-          >
-            <p>Moving charger {reassignModalPoint?.id} immediately. Past history remains with current site.</p>
-            <div className="form-group">
-              <label className="form-label">Target Station <span>*</span></label>
-              <SearchableDropdown options={stations.filter(s => s.id !== reassignModalPoint?.stationId && !s.isDeleted)} value={reassignStationId} onChange={setReassignStationId} placeholder="Select Station..." />
-            </div>
-          </Modal>
+          {/* FIXED: Removed Reassign Immediately Modal (Fix 4) */}
         </div>
       );
     };
