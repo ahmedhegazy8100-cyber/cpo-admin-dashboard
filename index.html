@@ -1953,15 +1953,38 @@
       };
 
       // FIXED: Added validateStep1 validation helper for Step 1 basics validation (Fix 1)
+      // Modified to revert blank fields to their original pre-edit values (User Request)
       const validateStep1 = () => {
-        const errors = {};
-        if (!stationDetails.name || !stationDetails.name.trim()) errors.name = "Name is required.";
-        if (!stationDetails.landlord) errors.landlord = "Landlord is required.";
-        if (!stationDetails.address || !stationDetails.address.trim()) errors.address = "Address is required.";
-        if (!stationDetails.description || !stationDetails.description.trim()) errors.description = "Description is required.";
-        if (!stationDetails.amenity) errors.amenity = "At least one amenity is required.";
-        setBasicsErrors(errors);
-        return Object.keys(errors).length === 0;
+        const updatedDetails = { ...stationDetails };
+        let modified = false;
+
+        if (!stationDetails.name || !stationDetails.name.trim()) {
+          updatedDetails.name = station.name;
+          modified = true;
+        }
+        if (!stationDetails.landlord) {
+          updatedDetails.landlord = station.landlordId;
+          modified = true;
+        }
+        if (!stationDetails.address || !stationDetails.address.trim()) {
+          updatedDetails.address = station.location;
+          modified = true;
+        }
+        if (!stationDetails.description || !stationDetails.description.trim()) {
+          updatedDetails.description = station.description;
+          modified = true;
+        }
+        if (!stationDetails.amenity) {
+          updatedDetails.amenity = station.amenities[0] || '';
+          modified = true;
+        }
+
+        if (modified) {
+          setStationDetails(updatedDetails);
+        }
+
+        setBasicsErrors({});
+        return true;
       };
 
       const handleAddPointSubmit = () => {
