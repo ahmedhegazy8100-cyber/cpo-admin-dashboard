@@ -628,11 +628,17 @@
       };
 
       const closeStationOnApp = (stationId) => {
+        // Close station
         setStations(prev => prev.map(s => s.id === stationId ? { ...s, appStatus: 'Closed' } : s));
+        // Also close all points under this station
+        setPoints(prev => prev.map(p => p.stationId === stationId ? { ...p, appStatus: 'Closed' } : p));
       };
 
       const openStationOnApp = (stationId) => {
+        // Open station
         setStations(prev => prev.map(s => s.id === stationId ? { ...s, appStatus: 'Open' } : s));
+        // Also open all points under this station
+        setPoints(prev => prev.map(p => p.stationId === stationId ? { ...p, appStatus: 'Open' } : p));
       };
 
       const closePointOnApp = (pointId) => {
@@ -2402,6 +2408,10 @@
                         tStr = `${INITIAL_TARIFFS.find(t => t.id === station.tariffId)?.name || station.tariffId} (Station)`;
                       }
 
+                      const isStationDisconnected = !station || station.status === 'Undefined' || station.status === 'Inactive';
+                      const isPointDisconnected = p.status === 'Undefined' || p.status === 'Inactive';
+                      const isDisabled = isStationDisconnected || isPointDisconnected;
+
                       return (
                         <tr key={`${p.id}-${p.isHistorical ? 'hist' : 'act'}`} className={p.isDeleted ? 'row-deleted' : ''} style={p.isHistorical ? { opacity: 0.6 } : {}}>
                           <td><strong>{p.id}</strong> {p.isHistorical && <span className="badge badge-historical" style={{ fontSize: '9px', marginLeft: '6px' }}>GHOST</span>}</td>
@@ -2415,9 +2425,58 @@
                           <td>{tStr}</td>
                           <td>{comm ? comm.name : '—'}</td>
                           <td>
-                            <span className={`badge ${p.appStatus === 'Open' ? 'badge-active' : 'badge-inactive'}`}>
-                              {p.appStatus || 'Open'}
-                            </span>
+                            <div className={`table-toggle-switch ${(p.appStatus === 'Closed' || isDisabled) ? 'inactive' : 'active'}`}
+                                 onClick={() => {
+                                   if (isStationDisconnected) {
+                                     alert("Station is not connected");
+                                     return;
+                                   }
+                                   if (isPointDisconnected) {
+                                     alert("Charging point is not connected");
+                                     return;
+                                   }
+                                   if (p.appStatus === 'Closed') {
+                                     if (station && station.appStatus === 'Closed') {
+                                       alert("Cannot open charging point because its station is closed on app");
+                                       return;
+                                     }
+                                     openPointOnApp(p.id);
+                                   } else {
+                                     setCloseAppModalPoint(p);
+                                   }
+                                 }}
+                                 style={{ 
+                                   display: 'flex', 
+                                   alignItems: 'center', 
+                                   gap: '8px', 
+                                   cursor: isDisabled ? 'not-allowed' : 'pointer', 
+                                   userSelect: 'none',
+                                   opacity: isDisabled ? 0.6 : 1
+                                 }}>
+                              <div className="toggle-track" style={{
+                                width: '36px',
+                                height: '20px',
+                                backgroundColor: (p.appStatus === 'Closed' || isDisabled) ? '#CBD5E0' : 'var(--primary)',
+                                borderRadius: '10px',
+                                position: 'relative',
+                                transition: 'background-color 0.2s'
+                              }}>
+                                <div className="toggle-thumb" style={{
+                                  width: '16px',
+                                  height: '16px',
+                                  backgroundColor: 'white',
+                                  borderRadius: '50%',
+                                  position: 'absolute',
+                                  top: '2px',
+                                  left: (p.appStatus === 'Closed' || isDisabled) ? '2px' : '18px',
+                                  transition: 'left 0.2s',
+                                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                }}></div>
+                              </div>
+                              <span style={{ fontSize: '12px', fontWeight: '500', color: (p.appStatus === 'Closed' || isDisabled) ? '#718096' : 'var(--primary)' }}>
+                                {(p.appStatus === 'Closed' || isDisabled) ? 'Deactive' : 'Active'}
+                              </span>
+                            </div>
                           </td>
                           <td>{p.sessions30}</td>
                           <td>
