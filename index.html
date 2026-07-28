@@ -2705,19 +2705,12 @@
                                 <button className="row-actions-btn" onClick={() => setActiveRowMenu(activeRowMenu === p.id ? null : p.id)}>⋮</button>
                                 {activeRowMenu === p.id && (
                                   <div className="row-menu-dropdown">
-                                    <button className="row-menu-item" onClick={() => alert(`Edit is done via Station Edit wizard.`)}>Edit Details</button>
-                                    {p.appStatus === 'Closed' ? (
-                                      <button className="row-menu-item" style={{ color: 'var(--primary)' }} onClick={() => { openPointOnApp(p.id); setActiveRowMenu(null); }}>Open on App</button>
-                                    ) : (
-                                      <button className="row-menu-item danger" onClick={() => { setCloseAppModalPoint(p); setActiveRowMenu(null); }}>Close on App</button>
-                                    )}
                                     {!p.isDeleted && (
                                       <button className="row-menu-item danger" onClick={() => { setDeleteModalPoint(p); setActiveRowMenu(null); }}>Delete</button>
                                     )}
                                     {p.status === 'Closed' && (
                                       <button className="row-menu-item" style={{ color: 'var(--primary)' }} onClick={() => { reopenPoint(p.id); setActiveRowMenu(null); }}>Reopen</button>
                                     )}
-                                    {/* FIXED: Removed Reassign action from PointsList row menu (Fix 4) */}
                                   </div>
                                 )}
                               </div>
