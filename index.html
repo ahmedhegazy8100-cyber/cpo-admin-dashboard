@@ -693,16 +693,25 @@
 
         let currentPointsList = [...points];
 
+        // Mark points that are missing from updatedChargersList as deleted if they belonged to this station
+        const keptIds = updatedChargersList.map(c => c.id);
+        currentPointsList = currentPointsList.map(p => {
+          if (p.stationId === stationId && !p.isHistorical && !p.isDeleted && !keptIds.includes(p.id)) {
+            return { ...p, isDeleted: true };
+          }
+          return p;
+        });
+
         updatedChargersList.forEach(charger => {
           // FIXED: Use manually entered charger.id instead of auto-generation (Fix 3)
           if (charger.isNew) {
             const modelObj = models.find(m => m.id === charger.modelId);
             currentPointsList.push({
               id: charger.id,
-              name: charger.name || `${modelObj.name} — Auto Point`,
+              name: charger.name || `${modelObj.name} — Point ${charger.id}`,
               modelId: charger.modelId,
-              tariffId: charger.tariffMode === 'same' ? charger.tariffId : null,
-              connectorTariffs: charger.tariffMode === 'per-connector' ? charger.connectorTariffs : null,
+              tariffId: (charger.tariffMode === 'same' || charger.tariffMode === 'point') ? charger.tariffId : null,
+              connectorTariffs: (charger.tariffMode === 'per-connector' || charger.tariffMode === 'connector') ? charger.connectorTariffs : null,
               communityId: charger.communityId || null,
               stationId: stationId,
               status: 'Undefined',
@@ -725,16 +734,15 @@
                   stationId: charger.pendingReassignTo,
                   isHistorical: false,
                   name: charger.name,
-                  tariffId: charger.tariffMode === 'same' ? charger.tariffId : null,
-                  connectorTariffs: charger.tariffMode === 'per-connector' ? charger.connectorTariffs : null,
+                  tariffId: (charger.tariffMode === 'same' || charger.tariffMode === 'point') ? charger.tariffId : null,
+                  connectorTariffs: (charger.tariffMode === 'per-connector' || charger.tariffMode === 'connector') ? charger.connectorTariffs : null,
                   communityId: charger.communityId || null,
                   sessions30: 0,
                   activeSessionNow: false
                 });
               } else {
-                existingPoint.name = charger.name;
-                existingPoint.tariffId = charger.tariffMode === 'same' ? charger.tariffId : null;
-                existingPoint.connectorTariffs = charger.tariffMode === 'per-connector' ? charger.connectorTariffs : null;
+                existingPoint.tariffId = (charger.tariffMode === 'same' || charger.tariffMode === 'point') ? charger.tariffId : null;
+                existingPoint.connectorTariffs = (charger.tariffMode === 'per-connector' || charger.tariffMode === 'connector') ? charger.connectorTariffs : null;
                 existingPoint.communityId = charger.communityId || null;
               }
             }
@@ -1920,10 +1928,9 @@
       const station = useMemo(() => stations.find(s => s.id === editingStationId), [stations, editingStationId]);
 
       const [stationDetails, setStationDetails] = useState({ name: '', address: '', description: '', landlord: '', amenity: '', tariffId: '' });
-      const [chargers, setChargers] = useState([]);
-      const [formErrors, setFormErrors] = useState({});
-      // FIXED: Added basicsErrors state for Step 1 validation (Fix 1)
+      const [blocks, setBlocks] = useState([]);
       const [basicsErrors, setBasicsErrors] = useState({});
+      const [blockErrors, setBlockErrors] = useState({});
 
       useEffect(() => {
         if (station) {
@@ -1933,48 +1940,50 @@
             description: station.description,
             landlord: station.landlordId,
             amenity: station.amenities[0] || '',
-            tariffId: station.tariffId || '' // FIXED: Load station tariff (User Request)
+            tariffId: station.tariffId || ''
           });
 
-          const stationPoints = points.filter(p => p.stationId === station.id && !p.isHistorical);
-          setChargers(stationPoints.map(p => ({
-            id: p.id,
-            name: p.name,
-            modelId: p.modelId,
-            tariffMode: p.tariffId ? 'same' : 'per-connector',
-            tariffId: p.tariffId || '',
-            connectorTariffs: p.connectorTariffs || [],
-            communityId: p.communityId || '',
-            isEditingInline: false,
-            pendingReassignTo: null,
-            isNew: false
-          })));
+          // Group existing points by modelId
+          const stationPoints = points.filter(p => p.stationId === station.id && !p.isDeleted && !p.isHistorical);
+          const groups = {};
+          stationPoints.forEach(p => {
+            if (!groups[p.modelId]) groups[p.modelId] = [];
+            groups[p.modelId].push(p);
+          });
+
+          const loadedBlocks = Object.entries(groups).map(([mId, pts], index) => {
+            const communityId = pts[0]?.communityId || '';
+            let tariffMode = 'station';
+            let blockTariffId = '';
+            let connectorTariffs = [];
+
+            if (pts.some(p => p.connectorTariffs && p.connectorTariffs.length > 0)) {
+              tariffMode = 'connector';
+              connectorTariffs = pts[0].connectorTariffs || [];
+            } else if (pts.some(p => p.tariffId)) {
+              tariffMode = 'point';
+              blockTariffId = pts[0].tariffId || '';
+            } else {
+              tariffMode = 'station';
+            }
+
+            return {
+              id: Date.now() + index * 10,
+              modelId: mId,
+              tariffMode: tariffMode,
+              tariffId: blockTariffId,
+              connectorTariffs: connectorTariffs,
+              communityId: communityId,
+              pointCount: pts.length,
+              pointIds: pts.map(p => p.id),
+              originalPointIds: pts.map(p => p.id)
+            };
+          });
+
+          setBlocks(loadedBlocks);
         }
       }, [station, points]);
 
-      const [reassignIndex, setReassignIndex] = useState(null);
-      const [reassignStationId, setReassignStationId] = useState('');
-
-      const [addPointModelId, setAddPointModelId] = useState('');
-      const [addPointCount, setAddPointCount] = useState(1);
-      const [addPointTariffMode, setAddPointTariffMode] = useState('same');
-      const [addPointTariffId, setAddPointTariffId] = useState('');
-      const [addPointConnectorTariffs, setAddPointConnectorTariffs] = useState([]);
-      const [addPointCommunityId, setAddPointCommunityId] = useState('');
-      const [addPointErrors, setAddPointErrors] = useState({});
-      // FIXED: Added addPointIds state for manual Point ID input (Fix 3)
-      const [addPointIds, setAddPointIds] = useState(['']);
-
-      const handleAddPointModelChange = (val) => {
-        setAddPointModelId(val);
-        const model = models.find(m => m.id === val);
-        setAddPointConnectorTariffs(model ? model.connectorTypes.map(c => ({ label: c.label, tariffId: '' })) : []);
-        // FIXED: Reset manual point IDs array with correct count size (Fix 3)
-        setAddPointIds(Array(addPointCount).fill(''));
-      };
-
-      // FIXED: Added validateStep1 validation helper for Step 1 basics validation (Fix 1)
-      // Modified to revert blank fields to their original pre-edit values (User Request)
       const validateStep1 = () => {
         const updatedDetails = { ...stationDetails };
         let modified = false;
@@ -2008,134 +2017,141 @@
         return true;
       };
 
-      const handleAddPointSubmit = () => {
-        const errs = {};
-        if (!addPointModelId) errs.modelId = "Required.";
-
-        // FIXED: Manual Point ID validation logic (Fix 3)
-        const existingPointIds = points.map(p => p.id.toLowerCase());
-        const currentChargerIds = chargers.map(c => c.id.toLowerCase());
-        const typedPointIds = [];
-        const pidErrs = [];
-
-        addPointIds.forEach((pid, pidx) => {
-          const clean = pid.trim();
-          if (!clean) {
-            pidErrs[pidx] = "Required.";
-          } else if (existingPointIds.includes(clean.toLowerCase())) {
-            pidErrs[pidx] = "Already exists.";
-          } else if (currentChargerIds.includes(clean.toLowerCase())) {
-            pidErrs[pidx] = "Already in station.";
-          } else if (typedPointIds.includes(clean.toLowerCase())) {
-            pidErrs[pidx] = "Duplicate.";
-          } else {
-            typedPointIds.push(clean.toLowerCase());
-          }
-        });
-
-        if (pidErrs.some(e => e)) {
-          errs.pointIds = pidErrs;
-        }
-
-        // FIXED: Only validate point tariffs if station tariff is NOT set (User Request)
-        if (addPointModelId && !stationDetails.tariffId) {
-          if (addPointTariffMode === 'same') {
-            if (!addPointTariffId) errs.tariffId = "Required.";
-          } else {
-            const model = models.find(m => m.id === addPointModelId);
-            const connErrs = [];
-            model?.connectorTypes.forEach((c, idx) => {
-              if (!addPointConnectorTariffs[idx]?.tariffId) connErrs[idx] = "Required.";
-            });
-            if (connErrs.length > 0) errs.connectorTariffs = connErrs;
-          }
-        }
-
-        if (Object.keys(errs).length > 0) {
-          setAddPointErrors(errs);
-          return;
-        }
-
-        const modelObj = models.find(m => m.id === addPointModelId);
-        const newPoints = [];
-        for (let i = 0; i < addPointCount; i++) {
-          newPoints.push({
-            id: addPointIds[i].trim(), // FIXED: Use manually entered Point ID (Fix 3)
-            name: `${modelObj.name} — Point ${chargers.length + i + 1}`,
-            modelId: addPointModelId,
-            tariffMode: addPointTariffMode,
-            tariffId: addPointTariffId,
-            connectorTariffs: addPointConnectorTariffs,
-            communityId: addPointCommunityId,
-            isEditingInline: false,
-            pendingReassignTo: null,
-            isNew: true
-          });
-        }
-
-        setChargers([...chargers, ...newPoints]);
-        setAddPointModelId('');
-        setAddPointCount(1);
-        setAddPointIds(['']); // FIXED: Reset addPointIds array (Fix 3)
-        setAddPointTariffMode('same');
-        setAddPointTariffId('');
-        setAddPointCommunityId('');
-        setAddPointConnectorTariffs([]);
-        setAddPointErrors({});
-      };
-
-      const updateChargerField = (idx, field, value) => {
-        setChargers(chargers.map((c, i) => {
-          if (i === idx) {
-            const updated = { ...c, [field]: value };
+      const updateBlockField = (id, field, value) => {
+        setBlocks(blocks.map(b => {
+          if (b.id === id) {
+            const updated = { ...b, [field]: value };
             if (field === 'modelId') {
               const model = models.find(m => m.id === value);
-              updated.connectorTariffs = model ? model.connectorTypes.map(conn => ({ label: conn.label, tariffId: '' })) : [];
+              updated.connectorTariffs = model ? model.connectorTypes.map(c => ({ label: c.label, tariffId: '' })) : [];
+            }
+            if (field === 'pointCount') {
+              const originalCount = b.originalPointIds.length;
+              const count = Math.max(originalCount, parseInt(value) || 1);
+              updated.pointCount = count;
+              const newIds = [...b.pointIds];
+              while (newIds.length < count) newIds.push('');
+              newIds.splice(count);
+              updated.pointIds = newIds;
             }
             return updated;
           }
-          return c;
+          return b;
         }));
       };
 
-      const handleSave = () => {
-        // FIXED: Re-run Step 1 validation inside handleSave (Fix 1)
-        const isStep1Valid = validateStep1();
+      const updateBlockPointId = (blockId, pointIdx, newId) => {
+        setBlocks(blocks.map(b => {
+          if (b.id === blockId) {
+            const updatedPointIds = [...b.pointIds];
+            updatedPointIds[pointIdx] = newId;
+            return { ...b, pointIds: updatedPointIds };
+          }
+          return b;
+        }));
+      };
 
-        let isValid = true;
+      const isBlockRemovable = (block) => {
+        if (!block.originalPointIds || block.originalPointIds.length === 0) return true;
+        return block.originalPointIds.every(pid => {
+          const livePoint = points.find(p => p.id === pid && !p.isHistorical);
+          return !livePoint || livePoint.status === 'Undefined';
+        });
+      };
+
+      const validateStep2 = () => {
         const errors = {};
+        let isValid = true;
 
-        // FIXED: Bypass point tariff validation if station tariff is set (User Request)
-        if (!stationDetails.tariffId) {
-          chargers.forEach((c, idx) => {
-            const cErrs = {};
-            if (c.tariffMode === 'same') {
-              if (!c.tariffId) { cErrs.tariffId = "Required."; isValid = false; }
-            } else {
-              const model = models.find(m => m.id === c.modelId);
+        const otherPointsIds = points
+          .filter(p => p.stationId !== editingStationId && !p.isDeleted && !p.isHistorical)
+          .map(p => p.id.toLowerCase());
+
+        const typedPointIds = [];
+
+        blocks.forEach((block) => {
+          const blockErrs = {};
+          if (!block.modelId) {
+            blockErrs.modelId = "Required.";
+            isValid = false;
+          }
+
+          if (block.modelId && !stationDetails.tariffId) {
+            if (block.tariffMode === 'point') {
+              if (!block.tariffId) {
+                blockErrs.tariffId = "Required.";
+                isValid = false;
+              }
+            } else if (block.tariffMode === 'connector') {
+              const model = models.find(m => m.id === block.modelId);
               const connErrs = [];
-              model?.connectorTypes.forEach((conn, connIdx) => {
-                const assigned = c.connectorTariffs.find(ct => ct.label === conn.label);
-                if (!assigned?.tariffId) { connErrs[connIdx] = "Required."; isValid = false; }
+              model?.connectorTypes.forEach((conn, cidx) => {
+                const assigned = block.connectorTariffs.find(ct => ct.label === conn.label);
+                if (!assigned?.tariffId) {
+                  connErrs[cidx] = "Required.";
+                  isValid = false;
+                }
               });
-              if (connErrs.length > 0) cErrs.connectorTariffs = connErrs;
+              if (connErrs.length > 0) blockErrs.connectorTariffs = connErrs;
             }
-            if (Object.keys(cErrs).length > 0) errors[idx] = cErrs;
-          });
-        }
+          }
 
-        if (!isStep1Valid || !isValid) {
+          const pidErrs = [];
+          block.pointIds.forEach((pid, pidx) => {
+            const clean = pid.trim();
+            if (!clean) {
+              pidErrs[pidx] = "Required.";
+              isValid = false;
+            } else if (otherPointsIds.includes(clean.toLowerCase())) {
+              pidErrs[pidx] = "Already exists.";
+              isValid = false;
+            } else if (typedPointIds.includes(clean.toLowerCase())) {
+              pidErrs[pidx] = "Duplicate.";
+              isValid = false;
+            } else {
+              typedPointIds.push(clean.toLowerCase());
+            }
+          });
+
+          if (pidErrs.some(e => e)) blockErrs.pointIds = pidErrs;
+          if (Object.keys(blockErrs).length > 0) errors[block.id] = blockErrs;
+        });
+
+        setBlockErrors(errors);
+        return isValid && blocks.length > 0;
+      };
+
+      const handleSave = () => {
+        const isStep1Valid = validateStep1();
+        const isStep2Valid = validateStep2();
+
+        if (!isStep1Valid || !isStep2Valid) {
           if (!isStep1Valid) {
-            setStep(1); // switch back to Step 1 to show basics errors
+            setStep(1);
             alert("Please fix basics validation errors before saving.");
           } else {
-            setFormErrors(errors);
-            alert("Fill all required tariffs before saving.");
+            alert("Please fix charger and tariff validation errors before saving.");
           }
           return;
         }
 
-        updateStation(editingStationId, stationDetails, chargers);
+        const updatedChargersList = [];
+        blocks.forEach(block => {
+          block.pointIds.forEach((pid, pidx) => {
+            const isNew = pidx >= block.originalPointIds.length;
+            updatedChargersList.push({
+              id: pid.trim(),
+              modelId: block.modelId,
+              tariffMode: block.tariffMode,
+              tariffId: block.tariffId,
+              connectorTariffs: block.connectorTariffs,
+              communityId: block.communityId,
+              isNew: isNew
+            });
+          });
+        });
+
+        updateStation(editingStationId, stationDetails, updatedChargersList);
         navigateTo('stations');
       };
 
@@ -2213,143 +2229,212 @@
                   {stationDetails.tariffId && <span style={{ fontSize: '11px', color: 'var(--primary)', marginTop: '6px', display: 'block' }}>⚠️ Lower-level point and connector tariff selections are locked/overridden.</span>}
                 </div>
 
-                <div className="review-card-title">Charging Points</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {chargers.map((charger, idx) => {
-                    const modelObj = models.find(m => m.id === charger.modelId);
-                    const errors = formErrors[idx] || {};
-                    
-                    // FIXED: Pull point statuses live from points array (Fix 5)
-                    const livePoint = points.find(p => p.id === charger.id && !p.isHistorical);
-                    const connStatus = livePoint ? livePoint.status : 'Undefined';
-                    const appStatus = livePoint ? (livePoint.appStatus || 'Open') : 'Open';
-                    
-                    // FIXED: Restrict Remove button to Undefined-status points only (Fix 2)
-                    const isRemoveDisabled = !charger.isNew && connStatus !== 'Undefined';
+                <div className="review-card-title">Chargers Configuration (Blocks)</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {blocks.map((block, idx) => {
+                    const errs = blockErrors[block.id] || {};
+                    const selectedModel = models.find(m => m.id === block.modelId);
+                    const isNewBlock = !block.originalPointIds || block.originalPointIds.length === 0;
+                    const canRemove = isBlockRemovable(block);
 
                     return (
-                      <div key={charger.id} className="charger-edit-item" style={charger.pendingReassignTo ? { opacity: 0.6 } : {}}>
-                        <div className="charger-edit-item-header">
-                          {/* FIXED: Show point connection and app statuses next to name (Fix 5) */}
-                          {/* FIXED: Removed Point Name from charger row display per User Request */}
-                          <div className="charger-edit-item-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <strong>{charger.id}</strong>
-                            {charger.isNew && <span className="badge" style={{ fontSize: '9px', backgroundColor: '#E0F2FE', color: '#0369A1' }}>NEW</span>}
-                            <StatusBadge status={connStatus} />
-                            <span className={`badge ${appStatus === 'Open' ? 'badge-active' : 'badge-inactive'}`}>
-                              {appStatus}
-                            </span>
-                            {modelObj && (
-                              <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '4px' }}>
-                                ({modelObj.name} — {getConnectorCountsStr(modelObj)})
-                              </span>
+                      <div key={block.id} className="repeater-block" style={{ backgroundColor: '#fff', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '8px' }}>
+                        <div className="repeater-block-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                          <span style={{ fontWeight: '600', color: 'var(--primary)' }}>Block #{idx + 1} {!isNewBlock && <span className="badge" style={{ fontSize: '9px', backgroundColor: '#F1F5F9', color: '#475569', marginLeft: '6px' }}>EXISTING</span>}</span>
+                          {canRemove ? (
+                            <button className="repeater-block-remove btn btn-danger" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={() => setBlocks(blocks.filter(b => b.id !== block.id))}>Remove Block</button>
+                          ) : (
+                            <Tooltip text="Blocks containing active or inactive charging points cannot be removed.">
+                              <button className="repeater-block-remove btn btn-danger" style={{ padding: '4px 10px', fontSize: '12px', opacity: 0.5, cursor: 'not-allowed' }} disabled>Remove Block</button>
+                            </Tooltip>
+                          )}
+                        </div>
+
+                        <div className="form-group-row">
+                          <div className="form-group">
+                            <label className="form-label">Model <span>*</span></label>
+                            {/* FIXED: Lock Model selection dropdown for existing blocks (User Request) */}
+                            <SearchableDropdown 
+                              options={models} 
+                              value={block.modelId} 
+                              onChange={(val) => updateBlockField(block.id, 'modelId', val)} 
+                              placeholder="Select Model..." 
+                              error={errs.modelId} 
+                              disabled={!isNewBlock}
+                            />
+                            {errs.modelId && <div className="error-text">{errs.modelId}</div>}
+                            {selectedModel && (
+                              <div className="spec-chips">
+                                {selectedModel.connectorTypes.map((c, cidx) => (
+                                  <span key={cidx} className={`spec-chip ${c.kind === 'DC' ? 'dc' : ''}`}>
+                                    {c.label} ({c.power})
+                                  </span>
+                                ))}
+                                <span className="spec-chip" style={{ background: '#F1F5F9', color: '#475569', fontWeight: 'bold' }}>
+                                  Total: {getConnectorCountsStr(selectedModel)}
+                                </span>
+                              </div>
                             )}
                           </div>
-                          <div className="charger-edit-item-actions">
-                            {charger.pendingReassignTo ? (
-                              <div className="reassign-badge-inline">
-                                <span>Pending reassign to {stations.find(s => s.id === charger.pendingReassignTo)?.name}</span>
-                                <span className="reassign-undo-btn" onClick={() => updateChargerField(idx, 'pendingReassignTo', null)}>Undo</span>
-                              </div>
-                            ) : (
-                              <>
-                                <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => setChargers(chargers.map((c, i) => i === idx ? { ...c, isEditingInline: !c.isEditingInline } : c))}>Configure</button>
-                                {!charger.isNew && <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', color: 'var(--primary)' }} onClick={() => { setReassignIndex(idx); setReassignStationId(''); }}>Reassign</button>}
-                                
-                                {/* FIXED: Disable Remove button for Active/Inactive points with tooltip (Fix 2) */}
-                                {isRemoveDisabled ? (
-                                  <Tooltip text="Only points with Undefined status can be removed.">
-                                    <button className="btn btn-danger" style={{ padding: '6px 12px', fontSize: '12px', opacity: 0.5, cursor: 'not-allowed' }} disabled>Remove</button>
-                                  </Tooltip>
-                                ) : (
-                                  <button className="btn btn-danger" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => setChargers(chargers.filter((_, i) => i !== idx))}>Remove</button>
-                                )}
-                              </>
-                            )}
+                          <div className="form-group">
+                            <label className="form-label">Community</label>
+                            <SearchableDropdown 
+                              options={INITIAL_COMMUNITIES} 
+                              value={block.communityId} 
+                              onChange={(val) => updateBlockField(block.id, 'communityId', val)} 
+                              placeholder="Select Community..." 
+                            />
                           </div>
                         </div>
 
-                        {charger.isEditingInline && !charger.pendingReassignTo && (
-                          <div className="inline-form-grid">
-                            {/* FIXED: Add explicit, clearly non-editable Model field (Fix 7) */}
-                            <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                              <label className="form-label">Model (View-Only) — {modelObj ? getConnectorCountsStr(modelObj) : ''}</label>
-                              <div style={{ padding: '8px 12px', backgroundColor: '#F1F5F9', border: '1px solid var(--border-color)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                                <span style={{ fontWeight: '500', color: 'var(--text-main)' }}>{modelObj ? modelObj.name : charger.modelId}</span>
-                                {modelObj && (
-                                  <div className="spec-chips" style={{ margin: 0 }}>
-                                    {modelObj.connectorTypes.map((c, cidx) => (
-                                      <span key={cidx} className={`spec-chip ${c.kind === 'DC' ? 'dc' : ''}`}>
-                                        {c.label} ({c.power})
-                                      </span>
-                                    ))}
-                                  </div>
+                        {selectedModel && (
+                          <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '16px', paddingTop: '16px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                              <label className="form-label">Tariff Assignment Level <span>*</span></label>
+                              <div className="filter-toggle-mode" style={{ width: '400px', display: 'flex' }}>
+                                <button 
+                                  className={`filter-toggle-btn ${block.tariffMode === 'station' ? 'active' : ''}`} 
+                                  style={{ flex: 1, opacity: stationDetails.tariffId ? 0.5 : 1, cursor: stationDetails.tariffId ? 'not-allowed' : 'pointer' }} 
+                                  onClick={() => { if (!stationDetails.tariffId) updateBlockField(block.id, 'tariffMode', 'station'); }}
+                                  disabled={!!stationDetails.tariffId}
+                                >
+                                  Station Level
+                                </button>
+                                <button 
+                                  className={`filter-toggle-btn ${block.tariffMode === 'point' ? 'active' : ''}`} 
+                                  style={{ flex: 1, opacity: stationDetails.tariffId ? 0.5 : 1, cursor: stationDetails.tariffId ? 'not-allowed' : 'pointer' }} 
+                                  onClick={() => { if (!stationDetails.tariffId) updateBlockField(block.id, 'tariffMode', 'point'); }}
+                                  disabled={!!stationDetails.tariffId}
+                                >
+                                  Point Level
+                                </button>
+                                {selectedModel.connectorTypes.length > 1 && (
+                                  <button 
+                                    className={`filter-toggle-btn ${block.tariffMode === 'connector' ? 'active' : ''}`} 
+                                    style={{ flex: 1, opacity: stationDetails.tariffId ? 0.5 : 1, cursor: stationDetails.tariffId ? 'not-allowed' : 'pointer' }} 
+                                    onClick={() => { if (!stationDetails.tariffId) updateBlockField(block.id, 'tariffMode', 'connector'); }}
+                                    disabled={!!stationDetails.tariffId}
+                                  >
+                                    Connector Level
+                                  </button>
                                 )}
                               </div>
                             </div>
 
-                            {/* FIXED: Removed Point Name input field and made Community span 2 columns per User Request */}
-                            <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                              <label className="form-label">Community</label>
-                              <SearchableDropdown options={INITIAL_COMMUNITIES} value={charger.communityId} onChange={(val) => updateChargerField(idx, 'communityId', val)} />
-                            </div>
-
-                            {modelObj && (
-                              <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <label className="form-label">Tariffs</label>
-                                  {modelObj.connectorTypes.length > 1 && (
-                                    <div className="filter-toggle-mode" style={{ width: '220px' }}>
-                                      <button className={`filter-toggle-btn ${charger.tariffMode === 'same' ? 'active' : ''}`} onClick={() => updateChargerField(idx, 'tariffMode', 'same')}>Same for all</button>
-                                      <button className={`filter-toggle-btn ${charger.tariffMode === 'per-connector' ? 'active' : ''}`} onClick={() => updateChargerField(idx, 'tariffMode', 'per-connector')}>Per connector</button>
+                            {/* Block Tariff Selectors */}
+                            {stationDetails.tariffId ? (
+                              <div className="warning-banner" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#B45309', display: 'flex', gap: '8px', alignItems: 'center', padding: '12px', borderRadius: '6px', marginBottom: '8px', fontSize: '13px' }}>
+                                <span>⚠️</span>
+                                <div><strong>Overridden by Station-Level Tariff:</strong> {INITIAL_TARIFFS.find(t => t.id === stationDetails.tariffId)?.name || stationDetails.tariffId}</div>
+                              </div>
+                            ) : (
+                              <>
+                                {block.tariffMode === 'station' && (
+                                  <div className="warning-banner" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', display: 'flex', gap: '8px', alignItems: 'center', padding: '12px', borderRadius: '6px', marginBottom: '8px', fontSize: '13px' }}>
+                                    <span>ℹ️</span>
+                                    <div>
+                                      <strong>Inherited Station Tariff:</strong> {stationDetails.tariffId ? (INITIAL_TARIFFS.find(t => t.id === stationDetails.tariffId)?.name || stationDetails.tariffId) : <span style={{ color: 'var(--text-muted)' }}>None (Free / Unassigned)</span>}
                                     </div>
-                                  )}
-                                </div>
+                                  </div>
+                                )}
 
-                                {charger.tariffMode === 'same' || modelObj.connectorTypes.length === 1 ? (
+                                {block.tariffMode === 'point' && (
                                   <div className="form-group">
-                                    {/* FIXED: Disable and display placeholder if station tariff is active (User Request) */}
+                                    <label className="form-label">Point Tariff <span>*</span></label>
                                     <SearchableDropdown 
                                       options={INITIAL_TARIFFS} 
-                                      value={stationDetails.tariffId ? '' : charger.tariffId} 
-                                      onChange={(val) => updateChargerField(idx, 'tariffId', val)} 
-                                      placeholder={stationDetails.tariffId ? "Overridden by Station Tariff" : "Select Tariff..."} 
-                                      error={stationDetails.tariffId ? null : errors.tariffId} 
-                                      disabled={!!stationDetails.tariffId}
+                                      value={block.tariffId} 
+                                      onChange={(val) => updateBlockField(block.id, 'tariffId', val)} 
+                                      placeholder="Select Point-Level Tariff..." 
+                                      error={errs.tariffId} 
                                     />
-                                    {errors.tariffId && !stationDetails.tariffId && <div className="error-text">{errors.tariffId}</div>}
+                                    {errs.tariffId && <div className="error-text">{errs.tariffId}</div>}
                                   </div>
-                                ) : (
+                                )}
+
+                                {block.tariffMode === 'connector' && (
                                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                                    {modelObj.connectorTypes.map((conn, cidx) => {
-                                      const ct = charger.connectorTariffs.find(u => u.label === conn.label);
-                                      const cErr = errors.connectorTariffs?.[cidx];
+                                    {selectedModel.connectorTypes.map((conn, cidx) => {
+                                      const ct = block.connectorTariffs.find(u => u.label === conn.label);
+                                      const cErr = errs.connectorTariffs?.[cidx];
                                       return (
                                         <div className="form-group" key={cidx}>
-                                          <label className="form-label">{conn.label} Tariff</label>
-                                          {/* FIXED: Disable and display placeholder if station tariff is active (User Request) */}
+                                          <label className="form-label">{conn.label} Tariff <span>*</span></label>
                                           <SearchableDropdown 
                                             options={INITIAL_TARIFFS} 
-                                            value={stationDetails.tariffId ? '' : (ct ? ct.tariffId : '')} 
+                                            value={ct ? ct.tariffId : ''} 
                                             onChange={(val) => {
-                                              const updated = [...charger.connectorTariffs];
+                                              const updated = [...block.connectorTariffs];
                                               const existIdx = updated.findIndex(u => u.label === conn.label);
                                               if (existIdx > -1) updated[existIdx].tariffId = val;
                                               else updated.push({ label: conn.label, tariffId: val });
-                                              updateChargerField(idx, 'connectorTariffs', updated);
+                                              updateBlockField(block.id, 'connectorTariffs', updated);
                                             }} 
-                                            placeholder={stationDetails.tariffId ? "Overridden by Station Tariff" : "Select Tariff..."} 
-                                            error={stationDetails.tariffId ? null : cErr} 
-                                            disabled={!!stationDetails.tariffId}
+                                            placeholder="Select Connector Tariff..." 
+                                            error={cErr} 
                                           />
-                                          {cErr && !stationDetails.tariffId && <div className="error-text">{cErr}</div>}
+                                          {cErr && <div className="error-text">{cErr}</div>}
                                         </div>
                                       );
                                     })}
                                   </div>
                                 )}
-                              </div>
+                              </>
                             )}
+
+                            {/* Point count & point ID manual entry inputs */}
+                            <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '16px', paddingTop: '16px' }}>
+                              <div className="form-group-row" style={{ marginBottom: '16px' }}>
+                                <div className="form-group" style={{ maxWidth: '200px' }}>
+                                  <label className="form-label">Point Count</label>
+                                  {/* FIXED: Prevent decreasing count below number of original point IDs (User Request) */}
+                                  <input 
+                                    type="number" 
+                                    className="input-field" 
+                                    min={block.originalPointIds.length} 
+                                    value={block.pointCount} 
+                                    onChange={(e) => updateBlockField(block.id, 'pointCount', e.target.value)} 
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="form-group">
+                                <label className="form-label">Point IDs <span>*</span></label>
+                                <div className="ids-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' }}>
+                                  {block.pointIds.map((pid, pidx) => {
+                                    const isOriginal = pidx < block.originalPointIds.length;
+                                    const err = errs.pointIds?.[pidx];
+                                    
+                                    // Get status and connection badge for existing points
+                                    let badgeEl = null;
+                                    if (isOriginal) {
+                                      const livePoint = points.find(p => p.id === pid && !p.isHistorical);
+                                      const connStatus = livePoint ? livePoint.status : 'Undefined';
+                                      badgeEl = <StatusBadge status={connStatus} />;
+                                    }
+
+                                    return (
+                                      <div key={pidx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                          <input 
+                                            type="text" 
+                                            className={`input-field ${err ? 'error' : ''}`} 
+                                            style={isOriginal ? { backgroundColor: '#F1F5F9', color: '#64748B', cursor: 'not-allowed' } : {}}
+                                            placeholder={`Point ID #${pidx + 1}`} 
+                                            value={pid} 
+                                            onChange={(e) => { if (!isOriginal) updateBlockPointId(block.id, pidx, e.target.value); }}
+                                            readOnly={isOriginal}
+                                          />
+                                          {badgeEl}
+                                        </div>
+                                        {err && <div className="error-text">{err}</div>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+
                           </div>
                         )}
                       </div>
@@ -2357,115 +2442,11 @@
                   })}
                 </div>
 
-                {/* Add new point subflow */}
-                <div className="repeater-block" style={{ backgroundColor: '#fff', borderStyle: 'dashed' }}>
-                  <div className="repeater-block-title" style={{ fontSize: '13px', color: 'var(--text-muted)' }}>+ Add New Point</div>
-                  <div className="form-group-row">
-                    <div className="form-group">
-                      <label className="form-label">Model</label>
-                      <SearchableDropdown options={models} value={addPointModelId} onChange={handleAddPointModelChange} placeholder="Select Model..." error={addPointErrors.modelId} />
-                      {addPointErrors.modelId && <div className="error-text">{addPointErrors.modelId}</div>}
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Count</label>
-                      {/* FIXED: Update addPointIds array count dynamically when count changes (Fix 3) */}
-                      <input type="number" className="input-field" min="1" value={addPointCount} onChange={(e) => {
-                        const count = Math.max(1, parseInt(e.target.value) || 1);
-                        setAddPointCount(count);
-                        setAddPointIds(prev => {
-                          const newIds = [...prev];
-                          while (newIds.length < count) newIds.push('');
-                          newIds.splice(count);
-                          return newIds;
-                        });
-                      }} />
-                    </div>
-                  </div>
-
-                  {/* FIXED: Manual Point ID inputs rendering, matching Create flow (Fix 3) */}
-                  {addPointModelId && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
-                      <div className="form-group">
-                        <label className="form-label">Point IDs <span>*</span></label>
-                        <div className="ids-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' }}>
-                          {addPointIds.map((pid, pidx) => {
-                            const err = addPointErrors.pointIds?.[pidx];
-                            return (
-                              <div key={pidx}>
-                                <input 
-                                  type="text" 
-                                  className={`input-field ${err ? 'error' : ''}`} 
-                                  placeholder={`Point ID #${pidx + 1}`} 
-                                  value={pid} 
-                                  onChange={(e) => {
-                                    const updated = [...addPointIds];
-                                    updated[pidx] = e.target.value;
-                                    setAddPointIds(updated);
-                                  }} 
-                                />
-                                {err && <div className="error-text">{err}</div>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
-                        <label className="form-label">Tariff Selection</label>
-                        {models.find(m => m.id === addPointModelId)?.connectorTypes.length > 1 && (
-                          <div className="filter-toggle-mode" style={{ width: '220px' }}>
-                            <button className={`filter-toggle-btn ${addPointTariffMode === 'same' ? 'active' : ''}`} onClick={() => setAddPointTariffMode('same')}>Same for all</button>
-                            <button className={`filter-toggle-btn ${addPointTariffMode === 'per-connector' ? 'active' : ''}`} onClick={() => setAddPointTariffMode('per-connector')}>Per connector</button>
-                          </div>
-                        )}
-                      </div>
-                      {addPointTariffMode === 'same' || models.find(m => m.id === addPointModelId)?.connectorTypes.length === 1 ? (
-                        <div className="form-group">
-                          {/* FIXED: Disable and display placeholder if station tariff is active (User Request) */}
-                          <SearchableDropdown 
-                            options={INITIAL_TARIFFS} 
-                            value={stationDetails.tariffId ? '' : addPointTariffId} 
-                            onChange={(val) => setAddPointTariffId(val)} 
-                            placeholder={stationDetails.tariffId ? "Overridden by Station Tariff" : "Select Tariff..."} 
-                            error={stationDetails.tariffId ? null : addPointErrors.tariffId} 
-                            disabled={!!stationDetails.tariffId}
-                          />
-                          {addPointErrors.tariffId && !stationDetails.tariffId && <div className="error-text">{addPointErrors.tariffId}</div>}
-                        </div>
-                      ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                          {models.find(m => m.id === addPointModelId)?.connectorTypes.map((conn, cidx) => {
-                            const val = addPointConnectorTariffs[cidx]?.tariffId || '';
-                            const cErr = addPointErrors.connectorTariffs?.[cidx];
-                            return (
-                              <div className="form-group" key={cidx}>
-                                <label className="form-label">{conn.label} Tariff</label>
-                                {/* FIXED: Disable and display placeholder if station tariff is active (User Request) */}
-                                <SearchableDropdown 
-                                  options={INITIAL_TARIFFS} 
-                                  value={stationDetails.tariffId ? '' : val} 
-                                  onChange={(tval) => {
-                                    const updated = [...addPointConnectorTariffs];
-                                    updated[cidx] = { label: conn.label, tariffId: tval };
-                                    setAddPointConnectorTariffs(updated);
-                                  }} 
-                                  placeholder={stationDetails.tariffId ? "Overridden by Station Tariff" : "Select Tariff..."} 
-                                  error={stationDetails.tariffId ? null : cErr} 
-                                  disabled={!!stationDetails.tariffId}
-                                />
-                                {cErr && !stationDetails.tariffId && <div className="error-text">{cErr}</div>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                      <div className="form-group">
-                        <label className="form-label">Community</label>
-                        <SearchableDropdown options={INITIAL_COMMUNITIES} value={addPointCommunityId} onChange={(val) => setAddPointCommunityId(val)} />
-                      </div>
-                    </div>
-                  )}
-                  <button className="btn btn-secondary" onClick={handleAddPointSubmit} style={{ alignSelf: 'flex-start' }}>Confirm Add</button>
+                <button className="btn btn-secondary" onClick={() => setBlocks([...blocks, { id: Date.now(), modelId: '', tariffMode: 'station', tariffId: '', connectorTariffs: [], communityId: '', pointCount: 1, pointIds: [''], originalPointIds: [] }])} style={{ alignSelf: 'flex-start', marginTop: '10px' }}>+ Add Block</button>
+                
+                <div className="summary-footer" style={{ background: '#F8FAFC', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: '600', color: 'var(--text-main)' }}>
+                  <span>Summary Running Total:</span>
+                  <span>{blocks.length} Blocks — {blocks.reduce((acc, b) => acc + b.pointCount, 0)} Points</span>
                 </div>
               </div>
             )}
