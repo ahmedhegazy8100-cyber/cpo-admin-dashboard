@@ -1207,7 +1207,7 @@
           name: [...new Set(stations.map(s => s.name))].map(v => ({ id: v, name: v })),
           landlordId: INITIAL_LANDLORDS.map(l => ({ id: l.id, name: l.name })),
           location: [...new Set(stations.map(s => s.location))].map(v => ({ id: v, name: v })),
-          status: ['Undefined', 'Active', 'Inactive', 'Partial Active', 'Closed'].map(v => ({ id: v, name: v })),
+          status: ['Undefined', 'Active', 'Inactive', 'Partial Active'].map(v => ({ id: v, name: v })),
           appStatus: ['Open', 'Closed'].map(v => ({ id: v, name: v }))
         };
       }, [stations]);
@@ -1241,7 +1241,7 @@
         return result.sort((a, b) => {
           if (a.isDeleted && !b.isDeleted) return 1;
           if (!a.isDeleted && b.isDeleted) return -1;
-          const SORT_ORDER = { 'Inactive': 0, 'Partial Active': 1, 'Undefined': 2, 'Active': 3, 'Closed': 4 };
+          const SORT_ORDER = { 'Inactive': 0, 'Partial Active': 1, 'Undefined': 2, 'Active': 3 };
           return SORT_ORDER[a.status] - SORT_ORDER[b.status];
         });
       }, [stations, globalSearch, activeKpiFilter, columnFilters]);
@@ -2569,7 +2569,7 @@
             });
           }
         });
-        const SORT_ORDER = { 'Inactive': 0, 'Partial Active': 1, 'Undefined': 2, 'Active': 3, 'Closed': 4, 'Deleted': 5 };
+        const SORT_ORDER = { 'Inactive': 0, 'Partial Active': 1, 'Undefined': 2, 'Active': 3, 'Deleted': 4 };
         return result.sort((a, b) => {
           const aStat = a.isDeleted ? 'Deleted' : a.status;
           const bStat = b.isDeleted ? 'Deleted' : b.status;
