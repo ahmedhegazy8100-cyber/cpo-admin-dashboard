@@ -3179,8 +3179,11 @@
                 <div className="table-container">
                   <table>
                     <thead>
+                      {/* Added Model ID and Vendor columns per User Request */}
                       <tr>
+                        <th>Model ID</th>
                         <th>Model Name</th>
+                        <th>Vendor</th>
                         <th>Type</th>
                         <th>Total Power</th>
                         <th>Connector Type</th>
@@ -3201,10 +3204,10 @@
 
                         return (
                           <tr key={m.id}>
-                            <td>
-                              <strong>{m.name}</strong>
-                              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Vendor: {m.vendor}</div>
-                            </td>
+                            {/* Render Model ID and Vendor columns per User Request */}
+                            <td><code>{m.id}</code></td>
+                            <td><strong>{m.name}</strong></td>
+                            <td>{m.vendor}</td>
                             <td><span className={`type-badge ${tBadgeClass}`}>{m.type}</span></td>
                             <td>{m.totalPower}</td>
                             <td>
