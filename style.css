@@ -452,6 +452,12 @@ body {
   text-decoration: line-through;
 }
 
+.badge-deleted {
+  background-color: #FEE2E2;
+  color: #EF4444;
+  border: 1px solid #FCA5A5;
+}
+
 .badge-historical {
   background-color: #F8FAFC;
   color: #94A3B8;

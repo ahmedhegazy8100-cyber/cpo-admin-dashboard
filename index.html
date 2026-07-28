@@ -301,7 +301,7 @@
         connectorTariffs: null,
         communityId: 'COM-202',
         stationId: 'STN-10003',
-        status: 'Inactive',
+        status: 'Partial Active',
         prevStatus: null,
         sessions30: 0,
         activeSessionNow: false,
@@ -829,14 +829,18 @@
     // Status Badge
     const StatusBadge = ({ status, deleted }) => {
       let badgeClass = 'badge-undefined';
-      if (status === 'Active') badgeClass = 'badge-active';
+      let displayStatus = status;
+      if (deleted) {
+        badgeClass = 'badge-deleted';
+        displayStatus = 'Deleted';
+      } else if (status === 'Active') badgeClass = 'badge-active';
       else if (status === 'Inactive') badgeClass = 'badge-inactive';
       else if (status === 'Partial Active') badgeClass = 'badge-partial';
       else if (status === 'Closed') badgeClass = 'badge-closed';
       
       return (
         <span className={`badge ${badgeClass}`}>
-          {status}
+          {displayStatus}
         </span>
       );
     };
@@ -2527,23 +2531,21 @@
       const uniqueColumnValues = useMemo(() => {
         return {
           id: [...new Set(points.map(p => p.id))].map(v => ({ id: v, name: v })),
-          // FIXED: Removed name column values mapper per User Request
           stationId: stations.map(s => ({ id: s.id, name: s.name })),
-          status: ['Undefined', 'Active', 'Inactive', 'Closed'].map(v => ({ id: v, name: v })),
+          status: ['Undefined', 'Active', 'Inactive', 'Partial Active', 'Deleted'].map(v => ({ id: v, name: v })),
           modelId: models.map(m => ({ id: m.id, name: m.name })),
           tariffId: INITIAL_TARIFFS.map(t => ({ id: t.id, name: t.name })),
           communityId: INITIAL_COMMUNITIES.map(c => ({ id: c.id, name: c.name })),
-          appStatus: ['Open', 'Closed'].map(v => ({ id: v, name: v }))
+          appStatus: ['Open', 'Closed', 'Deleted'].map(v => ({ id: v, name: v }))
         };
       }, [points, stations, models]);
 
       const processedPoints = useMemo(() => {
-        let result = points.filter(p => !p.isDeleted);
+        let result = [...points]; // Do not filter out deleted points so connection status "Deleted" is viewable (User Request)
         if (globalSearch) {
           const query = globalSearch.toLowerCase();
           result = result.filter(p => {
             const mName = models.find(m => m.id === p.modelId)?.name || '';
-            // FIXED: Removed p.name from search scope per User Request
             return p.id.toLowerCase().includes(query) || mName.toLowerCase().includes(query);
           });
         }
@@ -2555,12 +2557,24 @@
                 if (p.tariffId) return p.tariffId === val;
                 return p.connectorTariffs?.some(ct => ct.tariffId === val);
               }
+              if (key === 'status') {
+                const currentStatus = p.isDeleted ? 'Deleted' : p.status;
+                return currentStatus === val;
+              }
+              if (key === 'appStatus') {
+                const currentAppStatus = p.isDeleted ? 'Deleted' : p.appStatus;
+                return currentAppStatus === val;
+              }
               return p[key] === val;
             });
           }
         });
-        const SORT_ORDER = { 'Inactive': 0, 'Partial Active': 1, 'Undefined': 2, 'Active': 3, 'Closed': 4 };
-        return result.sort((a, b) => SORT_ORDER[a.status] - SORT_ORDER[b.status]);
+        const SORT_ORDER = { 'Inactive': 0, 'Partial Active': 1, 'Undefined': 2, 'Active': 3, 'Closed': 4, 'Deleted': 5 };
+        return result.sort((a, b) => {
+          const aStat = a.isDeleted ? 'Deleted' : a.status;
+          const bStat = b.isDeleted ? 'Deleted' : b.status;
+          return SORT_ORDER[aStat] - SORT_ORDER[bStat];
+        });
       }, [points, globalSearch, columnFilters, models]);
 
       return (
