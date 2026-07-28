@@ -2457,27 +2457,6 @@
             {step === 1 ? <button className="btn btn-primary" onClick={() => setStep(2)}>Next</button> : <button className="btn btn-primary" onClick={handleSave}>Save Changes</button>}
           </div>
 
-          {/* Pending Reassign Modal */}
-          <Modal
-            isOpen={reassignIndex !== null}
-            onClose={() => setReassignIndex(null)}
-            title="Reassign Point (Pending)"
-            footerButtons={
-              <>
-                <button className="btn btn-secondary" onClick={() => setReassignIndex(null)}>Cancel</button>
-                <button className="btn btn-primary" disabled={!reassignStationId} onClick={() => {
-                  setChargers(chargers.map((c, i) => i === reassignIndex ? { ...c, pendingReassignTo: reassignStationId } : c));
-                  setReassignIndex(null);
-                }}>Reassign</button>
-              </>
-            }
-          >
-            <p>Reassign point <strong>{chargers[reassignIndex]?.id}</strong>. Pending until wizard is saved.</p>
-            <div className="form-group">
-              <label className="form-label">Target Station</label>
-              <SearchableDropdown options={stations.filter(s => s.id !== editingStationId && !s.isDeleted)} value={reassignStationId} onChange={setReassignStationId} />
-            </div>
-          </Modal>
         </div>
       );
     };
