@@ -225,6 +225,7 @@
       }
     ];
 
+    // FIX 1 & FIX 3: Add hasActiveSession boolean and seed CP-ALFEN-301 with Partial Active status
     const INITIAL_POINTS = [
       {
         id: 'CP-ABB-101',
@@ -243,7 +244,13 @@
         sessions30: 75,
         activeSessionNow: false,
         isHistorical: false,
-        reassignedToStationId: null
+        reassignedToStationId: null,
+        hasActiveSession: true,
+        connectors: [
+          { id: 1, label: 'CCS2', status: 'Active' },
+          { id: 2, label: 'CHAdeMO', status: 'Active' },
+          { id: 3, label: 'Type 2', status: 'Active' }
+        ]
       },
       {
         id: 'CP-ALFEN-102',
@@ -258,7 +265,12 @@
         sessions30: 45,
         activeSessionNow: true,
         isHistorical: false,
-        reassignedToStationId: null
+        reassignedToStationId: null,
+        hasActiveSession: false,
+        connectors: [
+          { id: 1, label: 'Type 2 Socket A', status: 'Active' },
+          { id: 2, label: 'Type 2 Socket B', status: 'Active' }
+        ]
       },
       {
         id: 'CP-KEM-201',
@@ -276,7 +288,12 @@
         sessions30: 60,
         activeSessionNow: false,
         isHistorical: false,
-        reassignedToStationId: null
+        reassignedToStationId: null,
+        hasActiveSession: true,
+        connectors: [
+          { id: 1, label: 'CCS2 Plug 1', status: 'Active' },
+          { id: 2, label: 'CCS2 Plug 2', status: 'Active' }
+        ]
       },
       {
         id: 'CP-ALFEN-202',
@@ -291,7 +308,12 @@
         sessions30: 35,
         activeSessionNow: false,
         isHistorical: false,
-        reassignedToStationId: null
+        reassignedToStationId: null,
+        hasActiveSession: true,
+        connectors: [
+          { id: 1, label: 'Type 2 Socket A', status: 'Inactive' },
+          { id: 2, label: 'Type 2 Socket B', status: 'Inactive' }
+        ]
       },
       {
         id: 'CP-ALFEN-301',
@@ -306,7 +328,12 @@
         sessions30: 0,
         activeSessionNow: false,
         isHistorical: false,
-        reassignedToStationId: null
+        reassignedToStationId: null,
+        hasActiveSession: false,
+        connectors: [
+          { id: 1, label: 'Type 2 Socket A', status: 'Active' },
+          { id: 2, label: 'Type 2 Socket B', status: 'Inactive' }
+        ]
       },
       {
         id: 'CP-ABB-401',
@@ -325,7 +352,13 @@
         sessions30: 0,
         activeSessionNow: false,
         isHistorical: false,
-        reassignedToStationId: null
+        reassignedToStationId: null,
+        hasActiveSession: false,
+        connectors: [
+          { id: 1, label: 'CCS2', status: 'Undefined' },
+          { id: 2, label: 'CHAdeMO', status: 'Undefined' },
+          { id: 3, label: 'Type 2', status: 'Undefined' }
+        ]
       },
       {
         id: 'CP-ABB-501',
@@ -346,7 +379,13 @@
         isHistorical: false,
         reassignedToStationId: null,
         isDeleted: true,
-        appStatus: 'Deleted'
+        appStatus: 'Deleted',
+        hasActiveSession: false,
+        connectors: [
+          { id: 1, label: 'CCS2', status: 'Active' },
+          { id: 2, label: 'CHAdeMO', status: 'Active' },
+          { id: 3, label: 'Type 2', status: 'Active' }
+        ]
       }
     ];
 
@@ -582,23 +621,6 @@
         return { success: true };
       };
 
-      const reopenPoint = (pointId) => {
-        const updatedPoints = points.map(p => {
-          if (p.id === pointId) {
-            return {
-              ...p,
-              status: p.prevStatus || 'Inactive',
-              prevStatus: null
-            };
-          }
-          return p;
-        });
-
-        setPoints(updatedPoints);
-        setStations(syncStationStatuses(updatedPoints, stations));
-        return { success: true };
-      };
-
       // FIXED: Removed reassignPointImmediately (Fix 4)
 
       const closeStationOnApp = (stationId) => {
@@ -808,9 +830,8 @@
           addVendor,
           reopenStation,
           deleteStation,
-          reopenPoint,
           deletePoint,
-          // FIXED: Removed reassignPointImmediately from provider export (Fix 4)
+          getStationStatusRollup,
           addStation,
           updateStation,
           closeStationOnApp,
@@ -2118,11 +2139,15 @@
         }));
       };
 
+      // FIX 4: A block is removable only if every original point within it can be deleted (Undefined or Inactive and no active session)
       const isBlockRemovable = (block) => {
         if (!block.originalPointIds || block.originalPointIds.length === 0) return true;
         return block.originalPointIds.every(pid => {
           const livePoint = points.find(p => p.id === pid && !p.isHistorical);
-          return !livePoint || livePoint.status === 'Undefined';
+          if (!livePoint) return true;
+          if (livePoint.hasActiveSession) return false;
+          const connStatus = livePoint.status;
+          return connStatus === 'Undefined' || connStatus === 'Inactive';
         });
       };
 
@@ -2213,6 +2238,21 @@
             alert("Please fix charger and tariff validation errors before saving.");
           }
           return;
+        }
+
+        // FIX 3: Block save if any point pending reassignment has hasActiveSession = true
+        for (const block of blocks) {
+          if (block.pendingReassignments) {
+            for (const [pid, targetStationId] of Object.entries(block.pendingReassignments)) {
+              if (targetStationId) {
+                const livePoint = points.find(p => p.id === pid && !p.isHistorical && !p.isDeleted);
+                if (livePoint && livePoint.hasActiveSession) {
+                  alert(`${pid} has an active charging session and can't be reassigned until it ends.`);
+                  return;
+                }
+              }
+            }
+          }
         }
 
         const updatedChargersList = [];
@@ -2501,7 +2541,21 @@
                                     const livePoint = isOriginal ? points.find(p => p.id === pid && !p.isDeleted && !p.isHistorical) : null;
                                     const connStatus = livePoint ? livePoint.status : 'Undefined';
                                     const appStatus = livePoint ? (livePoint.appStatus || 'Open') : 'Open';
-                                    const isDeleteDisabled = isOriginal && connStatus !== 'Undefined';
+                                    const hasSession = livePoint ? !!livePoint.hasActiveSession : false;
+                                    
+                                    // FIX 3 & FIX 4: Determine point-level Delete disabled state and tooltip message
+                                    let isDeleteDisabled = false;
+                                    let deleteTooltipText = "";
+                                    if (isOriginal) {
+                                      if (hasSession) {
+                                        isDeleteDisabled = true;
+                                        deleteTooltipText = "This point has an active charging session and can't be deleted until it ends.";
+                                      } else if (connStatus !== 'Undefined' && connStatus !== 'Inactive') {
+                                        isDeleteDisabled = true;
+                                        deleteTooltipText = "Only points with Undefined or Inactive status can be deleted.";
+                                      }
+                                    }
+
                                     const targetReassignStationId = block.pendingReassignments?.[pid];
                                     const isPendingReassign = !!targetReassignStationId;
 
@@ -2540,7 +2594,7 @@
                                                 <>
                                                   <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => { setReassignPointId(pid); setReassignBlockId(block.id); setReassignStationId(''); }}>Reassign</button>
                                                   {isDeleteDisabled ? (
-                                                    <Tooltip text="Only points with Undefined status can be deleted.">
+                                                    <Tooltip text={deleteTooltipText}>
                                                       <button className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '11px', opacity: 0.5, cursor: 'not-allowed' }} disabled>Delete</button>
                                                     </Tooltip>
                                                   ) : (
@@ -2624,7 +2678,7 @@
     // --- SCREEN 4: CHARGING POINTS NETWORK LIST ---
     const PointsList = () => {
       // FIXED: Removed reassignPointImmediately from useContext (Fix 4)
-      const { points, stations, models, reopenPoint, deletePoint, closePointOnApp, openPointOnApp } = useContext(CpoContext);
+      const { points, stations, models, deletePoint, closePointOnApp, openPointOnApp } = useContext(CpoContext);
       
       const [globalSearch, setGlobalSearch] = useState('');
       
@@ -2841,10 +2895,15 @@
                                 {activeRowMenu === p.id && (
                                   <div className="row-menu-dropdown">
                                     {!p.isDeleted && (
-                                      <button className="row-menu-item danger" onClick={() => { setDeleteModalPoint(p); setActiveRowMenu(null); }}>Delete</button>
-                                    )}
-                                    {p.status === 'Closed' && (
-                                      <button className="row-menu-item" style={{ color: 'var(--primary)' }} onClick={() => { reopenPoint(p.id); setActiveRowMenu(null); }}>Reopen</button>
+                                      // FIX 3: Block Delete on points with active sessions in PointsList
+                                      <button className="row-menu-item danger" onClick={() => {
+                                        if (p.hasActiveSession) {
+                                          alert(`${p.id} has an active charging session — you can't delete it until the session ends.`);
+                                        } else {
+                                          setDeleteModalPoint(p);
+                                        }
+                                        setActiveRowMenu(null);
+                                      }}>Delete</button>
                                     )}
                                   </div>
                                 )}
