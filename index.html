@@ -1925,6 +1925,15 @@
         return Object.entries(counts).map(([kind, count]) => `${count} ${kind}`).join(', ');
       };
 
+      // FIXED: Helper to get base connector model name (stripping trailing suffixes) per User Request
+      const getConnectorModelName = (conn) => {
+        if (!conn || !conn.label) return '';
+        let name = conn.label;
+        name = name.replace(/\s+(Plug|Socket|Connector)?\s*[A-Z0-9]$/i, '');
+        name = name.replace(/\s+(Plug|Socket|Connector)$/i, '');
+        return name.trim();
+      };
+
       const station = useMemo(() => stations.find(s => s.id === editingStationId), [stations, editingStationId]);
 
       const [stationDetails, setStationDetails] = useState({ name: '', address: '', description: '', landlord: '', amenity: '', tariffId: '' });
@@ -2085,13 +2094,26 @@
             } else if (block.tariffMode === 'connector') {
               const model = models.find(m => m.id === block.modelId);
               const connErrs = [];
+              
+              // FIXED: Group and validate by model name (User Request)
+              const groupedConns = {};
               model?.connectorTypes.forEach((conn, cidx) => {
-                const assigned = block.connectorTariffs.find(ct => ct.label === conn.label);
+                const modelName = getConnectorModelName(conn);
+                if (!groupedConns[modelName]) groupedConns[modelName] = [];
+                groupedConns[modelName].push({ conn, cidx });
+              });
+
+              Object.entries(groupedConns).forEach(([modelName, items]) => {
+                const firstItem = items[0];
+                const assigned = block.connectorTariffs.find(ct => ct.label === firstItem.conn.label);
                 if (!assigned?.tariffId) {
-                  connErrs[cidx] = "Required.";
+                  items.forEach(item => {
+                    connErrs[item.cidx] = "Required.";
+                  });
                   isValid = false;
                 }
               });
+              
               if (connErrs.length > 0) blockErrs.connectorTariffs = connErrs;
             }
           }
@@ -2352,33 +2374,46 @@
                                   </div>
                                 )}
 
-                                {block.tariffMode === 'connector' && (
-                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                                    {selectedModel.connectorTypes.map((conn, cidx) => {
-                                      const ct = block.connectorTariffs.find(u => u.label === conn.label);
-                                      const cErr = errs.connectorTariffs?.[cidx];
-                                      return (
-                                        <div className="form-group" key={cidx}>
-                                          <label className="form-label">{conn.label} Tariff <span>*</span></label>
-                                          <SearchableDropdown 
-                                            options={INITIAL_TARIFFS} 
-                                            value={ct ? ct.tariffId : ''} 
-                                            onChange={(val) => {
-                                              const updated = [...block.connectorTariffs];
-                                              const existIdx = updated.findIndex(u => u.label === conn.label);
-                                              if (existIdx > -1) updated[existIdx].tariffId = val;
-                                              else updated.push({ label: conn.label, tariffId: val });
-                                              updateBlockField(block.id, 'connectorTariffs', updated);
-                                            }} 
-                                            placeholder="Select Connector Tariff..." 
-                                            error={cErr} 
-                                          />
-                                          {cErr && <div className="error-text">{cErr}</div>}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
+                                {block.tariffMode === 'connector' && (() => {
+                                  // Group connector types by base model name (User Request)
+                                  const groupedConns = {};
+                                  selectedModel.connectorTypes.forEach((conn, cidx) => {
+                                    const modelName = getConnectorModelName(conn);
+                                    if (!groupedConns[modelName]) groupedConns[modelName] = [];
+                                    groupedConns[modelName].push({ conn, cidx });
+                                  });
+
+                                  return (
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                      {Object.entries(groupedConns).map(([modelName, items]) => {
+                                        const firstItem = items[0];
+                                        const ct = block.connectorTariffs.find(u => u.label === firstItem.conn.label);
+                                        const cErr = errs.connectorTariffs?.[firstItem.cidx];
+                                        return (
+                                          <div className="form-group" key={modelName}>
+                                            <label className="form-label">{modelName} Tariff <span>*</span></label>
+                                            <SearchableDropdown 
+                                              options={INITIAL_TARIFFS} 
+                                              value={ct ? ct.tariffId : ''} 
+                                              onChange={(val) => {
+                                                const updated = [...block.connectorTariffs];
+                                                items.forEach(({ conn }) => {
+                                                  const existIdx = updated.findIndex(u => u.label === conn.label);
+                                                  if (existIdx > -1) updated[existIdx].tariffId = val;
+                                                  else updated.push({ label: conn.label, tariffId: val });
+                                                });
+                                                updateBlockField(block.id, 'connectorTariffs', updated);
+                                              }} 
+                                              placeholder="Select Connector Tariff..." 
+                                              error={cErr} 
+                                            />
+                                            {cErr && <div className="error-text">{cErr}</div>}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })()}
                               </>
                             )}
 
