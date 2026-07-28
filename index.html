@@ -1945,6 +1945,11 @@
       const [basicsErrors, setBasicsErrors] = useState({});
       const [blockErrors, setBlockErrors] = useState({});
 
+      // State variables for individual point reassignment
+      const [reassignPointId, setReassignPointId] = useState(null);
+      const [reassignBlockId, setReassignBlockId] = useState(null);
+      const [reassignStationId, setReassignStationId] = useState('');
+
       useEffect(() => {
         if (station) {
           setStationDetails({
@@ -1989,13 +1994,62 @@
               communityId: communityId,
               pointCount: pts.length,
               pointIds: pts.map(p => p.id),
-              originalPointIds: pts.map(p => p.id)
+              originalPointIds: pts.map(p => p.id),
+              pendingReassignments: {} // mapping { [pointId]: targetStationId }
             };
           });
 
           setBlocks(loadedBlocks);
         }
       }, [station, points]);
+
+      const deletePointFromBlock = (blockId, pointId) => {
+        setBlocks(blocks.map(b => {
+          if (b.id === blockId) {
+            const newOriginalIds = b.originalPointIds.filter(id => id !== pointId);
+            const newPointIds = b.pointIds.filter(id => id !== pointId);
+            const updatedReassignments = { ...b.pendingReassignments };
+            delete updatedReassignments[pointId];
+
+            return {
+              ...b,
+              originalPointIds: newOriginalIds,
+              pointIds: newPointIds,
+              pointCount: newPointIds.length,
+              pendingReassignments: updatedReassignments
+            };
+          }
+          return b;
+        }));
+      };
+
+      const deleteNewPointFromBlock = (blockId, pointIdx) => {
+        setBlocks(blocks.map(b => {
+          if (b.id === blockId) {
+            const newPointIds = b.pointIds.filter((_, i) => i !== pointIdx);
+            return {
+              ...b,
+              pointIds: newPointIds,
+              pointCount: newPointIds.length
+            };
+          }
+          return b;
+        }));
+      };
+
+      const undoReassignment = (blockId, pointId) => {
+        setBlocks(blocks.map(b => {
+          if (b.id === blockId) {
+            const updated = { ...b.pendingReassignments };
+            delete updated[pointId];
+            return {
+              ...b,
+              pendingReassignments: updated
+            };
+          }
+          return b;
+        }));
+      };
 
       const validateStep1 = () => {
         const updatedDetails = { ...stationDetails };
@@ -2172,7 +2226,8 @@
               tariffId: block.tariffId,
               connectorTariffs: block.connectorTariffs,
               communityId: block.communityId,
-              isNew: isNew
+              isNew: isNew,
+              pendingReassignTo: block.pendingReassignments?.[pid] || null
             });
           });
         });
@@ -2268,10 +2323,10 @@
                         <div className="repeater-block-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
                           <span style={{ fontWeight: '600', color: 'var(--primary)' }}>Block #{idx + 1} {!isNewBlock && <span className="badge" style={{ fontSize: '9px', backgroundColor: '#F1F5F9', color: '#475569', marginLeft: '6px' }}>EXISTING</span>}</span>
                           {canRemove ? (
-                            <button className="repeater-block-remove btn btn-danger" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={() => setBlocks(blocks.filter(b => b.id !== block.id))}>Remove Block</button>
+                            <button className="repeater-block-remove btn btn-danger" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={() => setBlocks(blocks.filter(b => b.id !== block.id))}>Delete Block</button>
                           ) : (
-                            <Tooltip text="Blocks containing active or inactive charging points cannot be removed.">
-                              <button className="repeater-block-remove btn btn-danger" style={{ padding: '4px 10px', fontSize: '12px', opacity: 0.5, cursor: 'not-allowed' }} disabled>Remove Block</button>
+                            <Tooltip text="Blocks containing active or inactive charging points cannot be deleted.">
+                              <button className="repeater-block-remove btn btn-danger" style={{ padding: '4px 10px', fontSize: '12px', opacity: 0.5, cursor: 'not-allowed' }} disabled>Delete Block</button>
                             </Tooltip>
                           )}
                         </div>
@@ -2438,35 +2493,67 @@
                               </div>
 
                               <div className="form-group">
-                                <label className="form-label">Point IDs <span>*</span></label>
-                                <div className="ids-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' }}>
+                                <label className="form-label">Point IDs & Actions <span>*</span></label>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                   {block.pointIds.map((pid, pidx) => {
                                     const isOriginal = pidx < block.originalPointIds.length;
                                     const err = errs.pointIds?.[pidx];
-                                    
-                                    // Get status and connection badge for existing points
-                                    let badgeEl = null;
-                                    if (isOriginal) {
-                                      const livePoint = points.find(p => p.id === pid && !p.isHistorical);
-                                      const connStatus = livePoint ? livePoint.status : 'Undefined';
-                                      badgeEl = <StatusBadge status={connStatus} />;
-                                    }
+                                    const livePoint = isOriginal ? points.find(p => p.id === pid && !p.isDeleted && !p.isHistorical) : null;
+                                    const connStatus = livePoint ? livePoint.status : 'Undefined';
+                                    const appStatus = livePoint ? (livePoint.appStatus || 'Open') : 'Open';
+                                    const isDeleteDisabled = isOriginal && connStatus !== 'Undefined';
+                                    const targetReassignStationId = block.pendingReassignments?.[pid];
+                                    const isPendingReassign = !!targetReassignStationId;
 
                                     return (
-                                      <div key={pidx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                          <input 
-                                            type="text" 
-                                            className={`input-field ${err ? 'error' : ''}`} 
-                                            style={isOriginal ? { backgroundColor: '#F1F5F9', color: '#64748B', cursor: 'not-allowed' } : {}}
-                                            placeholder={`Point ID #${pidx + 1}`} 
-                                            value={pid} 
-                                            onChange={(e) => { if (!isOriginal) updateBlockPointId(block.id, pidx, e.target.value); }}
-                                            readOnly={isOriginal}
-                                          />
-                                          {badgeEl}
+                                      <div key={pidx} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', border: '1px solid var(--border-color)', borderRadius: '6px', backgroundColor: isOriginal ? '#F8FAFC' : '#FFF' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                          <div style={{ flex: 1, minWidth: '180px' }}>
+                                            <input 
+                                              type="text" 
+                                              className={`input-field ${err ? 'error' : ''}`} 
+                                              style={isOriginal ? { backgroundColor: '#E2E8F0', color: '#475569', cursor: 'not-allowed', fontWeight: 'bold' } : {}}
+                                              placeholder={`Point ID #${pidx + 1}`} 
+                                              value={pid} 
+                                              onChange={(e) => { if (!isOriginal) updateBlockPointId(block.id, pidx, e.target.value); }}
+                                              readOnly={isOriginal}
+                                            />
+                                          </div>
+                                          
+                                          {isOriginal && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                              <StatusBadge status={connStatus} />
+                                              <span className={`badge ${appStatus === 'Open' ? 'badge-active' : 'badge-inactive'}`}>
+                                                {appStatus}
+                                              </span>
+                                            </div>
+                                          )}
+
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            {isOriginal ? (
+                                              isPendingReassign ? (
+                                                <div className="reassign-badge-inline" style={{ margin: 0, padding: '4px 8px' }}>
+                                                  <span style={{ fontSize: '11px' }}>Pending reassign to <strong>{stations.find(s => s.id === targetReassignStationId)?.name || targetReassignStationId}</strong></span>
+                                                  <span className="reassign-undo-btn" style={{ fontSize: '11px', marginLeft: '6px', cursor: 'pointer', color: 'var(--primary)', textDecoration: 'underline' }} onClick={() => undoReassignment(block.id, pid)}>Undo</span>
+                                                </div>
+                                              ) : (
+                                                <>
+                                                  <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => { setReassignPointId(pid); setReassignBlockId(block.id); setReassignStationId(''); }}>Reassign</button>
+                                                  {isDeleteDisabled ? (
+                                                    <Tooltip text="Only points with Undefined status can be deleted.">
+                                                      <button className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '11px', opacity: 0.5, cursor: 'not-allowed' }} disabled>Delete</button>
+                                                    </Tooltip>
+                                                  ) : (
+                                                    <button className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => deletePointFromBlock(block.id, pid)}>Delete</button>
+                                                  )}
+                                                </>
+                                              )
+                                            ) : (
+                                              <button className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => deleteNewPointFromBlock(block.id, pidx)}>Delete</button>
+                                            )}
+                                          </div>
                                         </div>
-                                        {err && <div className="error-text">{err}</div>}
+                                        {err && <div className="error-text" style={{ margin: 0 }}>{err}</div>}
                                       </div>
                                     );
                                   })}
@@ -2496,6 +2583,40 @@
             {step === 1 ? <button className="btn btn-primary" onClick={() => setStep(2)}>Next</button> : <button className="btn btn-primary" onClick={handleSave}>Save Changes</button>}
           </div>
 
+          {/* Pending Reassign Modal */}
+          <Modal
+            isOpen={reassignPointId !== null}
+            onClose={() => { setReassignPointId(null); setReassignBlockId(null); setReassignStationId(''); }}
+            title="Reassign Point (Pending)"
+            footerButtons={
+              <>
+                <button className="btn btn-secondary" onClick={() => { setReassignPointId(null); setReassignBlockId(null); setReassignStationId(''); }}>Cancel</button>
+                <button className="btn btn-primary" disabled={!reassignStationId} onClick={() => {
+                  setBlocks(blocks.map(b => {
+                    if (b.id === reassignBlockId) {
+                      return {
+                        ...b,
+                        pendingReassignments: {
+                          ...b.pendingReassignments,
+                          [reassignPointId]: reassignStationId
+                        }
+                      };
+                    }
+                    return b;
+                  }));
+                  setReassignPointId(null);
+                  setReassignBlockId(null);
+                  setReassignStationId('');
+                }}>Reassign</button>
+              </>
+            }
+          >
+            <p>Reassign point <strong>{reassignPointId}</strong>. Pending until wizard is saved.</p>
+            <div className="form-group">
+              <label className="form-label">Target Station</label>
+              <SearchableDropdown options={stations.filter(s => s.id !== editingStationId && !s.isDeleted)} value={reassignStationId} onChange={setReassignStationId} />
+            </div>
+          </Modal>
         </div>
       );
     };
