@@ -1421,7 +1421,7 @@
                               }}></div>
                             </div>
                             <span style={{ fontSize: '12px', fontWeight: '500', color: (s.appStatus === 'Closed' || s.status === 'Undefined' || s.status === 'Inactive') ? '#718096' : 'var(--primary)' }}>
-                              {(s.appStatus === 'Closed' || s.status === 'Undefined' || s.status === 'Inactive') ? 'Deactive' : 'Active'}
+                              {(s.appStatus === 'Closed' || s.status === 'Undefined' || s.status === 'Inactive') ? 'Closed' : 'Open'}
                             </span>
                           </div>
                         </td>
@@ -2883,7 +2883,7 @@
                                 }}></div>
                               </div>
                               <span style={{ fontSize: '12px', fontWeight: '500', color: (p.appStatus === 'Closed' || isDisabled) ? '#718096' : 'var(--primary)' }}>
-                                {(p.appStatus === 'Closed' || isDisabled) ? 'Deactive' : 'Active'}
+                                {(p.appStatus === 'Closed' || isDisabled) ? 'Closed' : 'Open'}
                               </span>
                             </div>
                           </td>
