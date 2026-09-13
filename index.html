@@ -1186,7 +1186,6 @@
       const { stations, points, navigateTo, reopenStation, deleteStation, closeStationOnApp, openStationOnApp } = useContext(CpoContext);
       
       const [globalSearch, setGlobalSearch] = useState('');
-      const [activeKpiFilter, setActiveKpiFilter] = useState(null); 
       
       const [columnFilters, setColumnFilters] = useState({
         id: { value: '', mode: 'equals' }, 
@@ -1218,10 +1217,6 @@
         return () => document.removeEventListener('mousedown', handleClickOutside);
       }, []);
 
-      const activeCount = useMemo(() => stations.filter(s => s.status === 'Active').length, [stations]);
-      const needsAttentionCount = useMemo(() => stations.filter(s => s.status === 'Inactive' || s.status === 'Partial Active').length, [stations]);
-      const activeSessionsCount = useMemo(() => points.filter(p => p.activeSessionNow && !p.isHistorical).length, [points]);
-
       const uniqueColumnValues = useMemo(() => {
         return {
           id: [...new Set(stations.map(s => s.id))].map(v => ({ id: v, name: v })),
@@ -1245,11 +1240,6 @@
                    landlordName.toLowerCase().includes(query);
           });
         }
-        if (activeKpiFilter === 'Active') {
-          result = result.filter(s => s.status === 'Active');
-        } else if (activeKpiFilter === 'NeedsAttention') {
-          result = result.filter(s => s.status === 'Inactive' || s.status === 'Partial Active');
-        }
         Object.keys(columnFilters).forEach(key => {
           const filter = columnFilters[key];
           if (filter.value) {
@@ -1265,7 +1255,7 @@
           const SORT_ORDER = { 'Inactive': 0, 'Partial Active': 1, 'Undefined': 2, 'Active': 3 };
           return SORT_ORDER[a.status] - SORT_ORDER[b.status];
         });
-      }, [stations, globalSearch, activeKpiFilter, columnFilters]);
+      }, [stations, globalSearch, columnFilters]);
 
       const [currentPage, setCurrentPage] = useState(1);
       const rowsPerPage = 20;
@@ -1276,7 +1266,6 @@
 
       const clearAllFilters = () => {
         setGlobalSearch('');
-        setActiveKpiFilter(null);
         setColumnFilters({
           id: { value: '', mode: 'equals' },
           name: { value: '', mode: 'equals' },
@@ -1289,25 +1278,6 @@
 
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* KPI Dashboard */}
-          <div className="kpi-container">
-            <div className={`kpi-card clickable ${activeKpiFilter === 'Active' ? 'active-filter' : ''}`} onClick={() => setActiveKpiFilter(activeKpiFilter === 'Active' ? null : 'Active')}>
-              <div className="kpi-title">Active Stations</div>
-              <div className="kpi-value">{activeCount}</div>
-              <div className="kpi-subtitle">Showing all live charging hubs</div>
-            </div>
-            <div className={`kpi-card clickable ${activeKpiFilter === 'NeedsAttention' ? 'active-filter' : ''}`} onClick={() => setActiveKpiFilter(activeKpiFilter === 'NeedsAttention' ? null : 'NeedsAttention')}>
-              <div className="kpi-title">Needs Attention</div>
-              <div className="kpi-value">{needsAttentionCount}</div>
-              <div className="kpi-subtitle">Inactive or Partial Active points</div>
-            </div>
-            <div className="kpi-card">
-              <div className="kpi-title">Active Charging Sessions</div>
-              <div className="kpi-value" style={{ color: 'var(--primary)' }}>{activeSessionsCount}</div>
-              <div className="kpi-subtitle">Network-wide active sessions</div>
-            </div>
-          </div>
-
           {/* Toolbar */}
           <div className="toolbar">
             <div className="toolbar-left">
@@ -1315,7 +1285,7 @@
                 <Icon name="search" />
                 <input type="text" className="search-input" placeholder="Global search ID, name, location..." value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)} />
               </div>
-              {(globalSearch || activeKpiFilter || Object.values(columnFilters).some(f => f.value)) && (
+              {(globalSearch || Object.values(columnFilters).some(f => f.value)) && (
                 <span className="clear-filters" onClick={clearAllFilters}>Clear all filters</span>
               )}
             </div>
@@ -1333,8 +1303,8 @@
               <table>
                 <thead>
                   <tr>
-                    {['id', 'name', 'landlordId', 'location', 'status', 'appStatus'].map(colKey => {
-                      const label = { id: 'Station ID', name: 'Station Name', landlordId: 'Landlord', location: 'Location', status: 'Connection Status', appStatus: 'App Status' }[colKey];
+                    {['id', 'name', 'landlordId', 'location', 'appStatus'].map(colKey => {
+                      const label = { id: 'Station ID', name: 'Station Name', landlordId: 'Landlord', location: 'Location', appStatus: 'App Status' }[colKey];
                       const isFilterActive = columnFilters[colKey].value !== '';
                       return (
                         <th key={colKey}>
@@ -1370,7 +1340,7 @@
                 </thead>
                 <tbody>
                   {paginatedStations.length === 0 ? (
-                    <tr><td colSpan="10" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>No stations found.</td></tr>
+                    <tr><td colSpan="9" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>No stations found.</td></tr>
                   ) : (
                     paginatedStations.map(s => (
                       <tr key={s.id} className={s.isDeleted ? 'row-deleted' : ''}>
@@ -1378,7 +1348,6 @@
                         <td>{s.name}</td>
                         <td>{INITIAL_LANDLORDS.find(l => l.id === s.landlordId)?.name || s.landlordId}</td>
                         <td>{s.location}</td>
-                        <td><StatusBadge status={s.status} deleted={s.isDeleted} /></td>
                         <td>
                           <div className={`table-toggle-switch ${(s.appStatus === 'Closed' || s.status === 'Undefined' || s.status === 'Inactive') ? 'inactive' : 'active'}`}
                                onClick={() => {
@@ -1723,30 +1692,53 @@
                   const errs = blockErrors[block.id] || {};
                   const selectedModel = models.find(m => m.id === block.modelId);
                   return (
-                    <div key={block.id} className="repeater-block">
-                      <div className="repeater-block-header">
-                        <span>Block #{idx + 1}</span>
-                        {blocks.length > 1 && <button className="repeater-block-remove" onClick={() => setBlocks(blocks.filter(b => b.id !== block.id))}>Remove</button>}
+                    <div key={block.id} className="repeater-block" style={{ border: '1px solid var(--border-color)', padding: '20px', borderRadius: '8px', backgroundColor: '#FFF' }}>
+                      <div className="repeater-block-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '10px', borderBottom: '1px solid var(--border-color)' }}>
+                        <span style={{ fontWeight: '600', color: 'var(--text-color)', fontSize: '14px' }}>
+                          ⚡ Charger Model #{idx + 1} {selectedModel ? `(${selectedModel.name})` : ''}
+                        </span>
+                        {blocks.length > 1 && (
+                          <button 
+                            className="btn btn-secondary" 
+                            style={{ padding: '4px 10px', fontSize: '12px', color: '#EF4444', borderColor: '#FECACA' }} 
+                            onClick={() => setBlocks(blocks.filter(b => b.id !== block.id))}
+                          >
+                            Remove Model
+                          </button>
+                        )}
                       </div>
+
                       <div className="form-group-row">
                         <div className="form-group">
                           <label className="form-label">Model <span>*</span></label>
-                          <SearchableDropdown options={models} value={block.modelId} onChange={(val) => updateBlockField(block.id, 'modelId', val)} placeholder="Select Model..." error={errs.modelId} />
+                          <SearchableDropdown options={models} value={block.modelId} onChange={(val) => updateBlockField(block.id, 'modelId', val)} placeholder="Select Charger Model..." error={errs.modelId} />
                           {errs.modelId && <div className="error-text">{errs.modelId}</div>}
                           {selectedModel && (
-                            <div className="spec-chips">
-                              {selectedModel.connectorTypes.map((c, cidx) => <span key={cidx} className={`spec-chip ${c.kind === 'DC' ? 'dc' : ''}`}>{c.label} ({c.power})</span>)}
+                            <div style={{ marginTop: '10px' }}>
+                              <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '4px' }}>Model Specifications & Connectors:</div>
+                              <div className="spec-chips">
+                                {selectedModel.connectorTypes.map((c, cidx) => (
+                                  <span key={cidx} className={`spec-chip ${c.kind === 'DC' ? 'dc' : ''}`}>
+                                    ⚡ {c.label} ({c.power}) — {c.kind}
+                                  </span>
+                                ))}
+                                {selectedModel.totalPower && (
+                                  <span className="spec-chip" style={{ backgroundColor: '#EDF2F7', color: '#2D3748' }}>
+                                    Total: {selectedModel.totalPower}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>
                         <div className="form-group">
                           <label className="form-label">Community</label>
-                          <SearchableDropdown options={INITIAL_COMMUNITIES} value={block.communityId} onChange={(val) => updateBlockField(block.id, 'communityId', val)} placeholder="Select Community..." />
+                          <SearchableDropdown options={INITIAL_COMMUNITIES} value={block.communityId} onChange={(val) => updateBlockField(block.id, 'communityId', val)} placeholder="Select Community to Assign..." />
                         </div>
                       </div>
 
                       {selectedModel && (
-                        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '12px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                             <label className="form-label">Tariff Assignment Level <span>*</span></label>
                             <div className="filter-toggle-mode" style={{ width: '400px', display: 'flex' }}>
@@ -1799,9 +1791,9 @@
                         </div>
                       )}
 
-                      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         <div className="form-group" style={{ width: '200px' }}>
-                          <label className="form-label">Point Count</label>
+                          <label className="form-label">Number of Points <span>*</span></label>
                           <input type="number" className="input-field" min="1" value={block.pointCount} onChange={(e) => updateBlockField(block.id, 'pointCount', e.target.value)} />
                         </div>
                         <div className="form-group">
@@ -1826,10 +1818,20 @@
                     </div>
                   );
                 })}
-                <button className="btn btn-secondary" onClick={() => setBlocks([...blocks, { id: Date.now(), modelId: '', tariffMode: 'station', tariffId: '', connectorTariffs: [], pointCount: 1, pointIds: [''], communityId: '' }])} style={{ alignSelf: 'flex-start' }}>+ Add Block</button>
-                <div className="summary-footer">
+
+                {/* + Add Model Button */}
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => setBlocks([...blocks, { id: Date.now(), modelId: '', tariffMode: 'station', tariffId: '', connectorTariffs: [], pointCount: 1, pointIds: [''], communityId: '' }])} 
+                  style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Icon name="plus" />
+                  <span>+ Add Model</span>
+                </button>
+
+                <div className="summary-footer" style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: '#F8FAFC', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '13px', fontWeight: '500' }}>
                   <span>Summary Running Total:</span>
-                  <span>{totals.totalBlocks} Blocks — {totals.totalPoints} Points</span>
+                  <span><strong>{blocks.length}</strong> Charger {blocks.length === 1 ? 'Model' : 'Models'} — <strong>{totals.totalPoints}</strong> Total Points</span>
                 </div>
               </div>
             )}
@@ -1865,9 +1867,10 @@
                 </div>
 
                 <div className="review-blocks">
-                  <div className="review-card-title">Chargers configuration</div>
-                  {blocks.map((block, idx) => {
+                  <div className="review-card-title">Charger Configuration</div>
+                  {blocks.map((block) => {
                     const modelObj = models.find(m => m.id === block.modelId);
+                    const commObj = INITIAL_COMMUNITIES.find(c => c.id === block.communityId);
                     let blockTariffStr = 'Station Level';
                     if (block.tariffMode === 'point') {
                       blockTariffStr = `Point Level: ${INITIAL_TARIFFS.find(t => t.id === block.tariffId)?.name || block.tariffId}`;
@@ -1877,11 +1880,11 @@
                     return (
                       <div key={block.id} className="review-block-item">
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '600' }}>
-                          <span>Block #{idx + 1} — {modelObj?.name}</span>
+                          <span>Model: {modelObj?.name || '—'}</span>
                           <span>{block.pointCount} Points</span>
                         </div>
                         <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                          Tariff Level: <strong>{blockTariffStr}</strong>
+                          Community: <strong>{commObj?.name || 'None'}</strong> | Tariff Level: <strong>{blockTariffStr}</strong>
                         </div>
                         <div className="spec-chips" style={{ marginTop: '6px' }}>
                           {block.pointIds.map(pid => <span key={pid} className="spec-chip dc">{pid}</span>)}
@@ -2276,6 +2279,41 @@
         navigateTo('stations');
       };
 
+      const tariffSummary = useMemo(() => {
+        const stationPoints = points.filter(p => p.stationId === editingStationId && !p.isDeleted && !p.isHistorical);
+        
+        const pointTariffsList = stationPoints.filter(p => p.tariffId).map(p => ({
+          pointId: p.id,
+          tariffName: INITIAL_TARIFFS.find(t => t.id === p.tariffId)?.name || p.tariffId
+        }));
+
+        const connectorTariffsList = [];
+        stationPoints.forEach(p => {
+          if (p.connectorTariffs && p.connectorTariffs.length > 0) {
+            p.connectorTariffs.forEach(ct => {
+              if (ct.tariffId) {
+                connectorTariffsList.push({
+                  pointId: p.id,
+                  connectorLabel: ct.label,
+                  tariffName: INITIAL_TARIFFS.find(t => t.id === ct.tariffId)?.name || ct.tariffId
+                });
+              }
+            });
+          }
+        });
+
+        let activeLevel = 'Station Level';
+        if (connectorTariffsList.length > 0) {
+          activeLevel = 'Connector Level';
+        } else if (pointTariffsList.length > 0) {
+          activeLevel = 'Point Level';
+        } else if (stationDetails.tariffId) {
+          activeLevel = 'Station Level';
+        }
+
+        return { activeLevel, pointTariffsList, connectorTariffsList };
+      }, [points, editingStationId, stationDetails.tariffId]);
+
       if (!station) return <div>Loading...</div>;
 
       return (
@@ -2323,15 +2361,96 @@
                     {basicsErrors.amenity && <div className="error-text">{basicsErrors.amenity}</div>}
                   </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Address <span>*</span></label>
-                  <input type="text" className={`input-field ${basicsErrors.address ? 'error' : ''}`} value={stationDetails.address} onChange={(e) => setStationDetails({ ...stationDetails, address: e.target.value })} />
-                  {basicsErrors.address && <div className="error-text">{basicsErrors.address}</div>}
+                <div className="form-group-row">
+                  <div className="form-group">
+                    <label className="form-label">Station-Level Tariff</label>
+                    <SearchableDropdown
+                      options={INITIAL_TARIFFS}
+                      value={stationDetails.tariffId}
+                      onChange={(val) => setStationDetails({ ...stationDetails, tariffId: val })}
+                      placeholder="Select Station-Level Tariff (Optional)..."
+                    />
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                      Applies to all points and connectors unless overridden at Point/Connector level.
+                    </span>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Address <span>*</span></label>
+                    <input type="text" className={`input-field ${basicsErrors.address ? 'error' : ''}`} value={stationDetails.address} onChange={(e) => setStationDetails({ ...stationDetails, address: e.target.value })} />
+                    {basicsErrors.address && <div className="error-text">{basicsErrors.address}</div>}
+                  </div>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Description <span>*</span></label>
                   <textarea className={`input-field ${basicsErrors.description ? 'error' : ''}`} rows="3" value={stationDetails.description} onChange={(e) => setStationDetails({ ...stationDetails, description: e.target.value })} />
                   {basicsErrors.description && <div className="error-text">{basicsErrors.description}</div>}
+                </div>
+
+                {/* Tariff Assignment Level Summary Display */}
+                <div className="tariff-level-summary-card" style={{ padding: '16px', background: '#F8FAFC', border: '1px solid var(--border-color)', borderRadius: '8px', marginTop: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <span style={{ fontWeight: '600', fontSize: '13.5px', color: 'var(--text-color)' }}>
+                      Current Tariff Assignment Level:
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className="badge badge-active" style={{ fontSize: '12px', padding: '4px 10px' }}>
+                        {tariffSummary.activeLevel}
+                      </span>
+                      {stationDetails.tariffId && (
+                        <button 
+                          className="btn btn-secondary" 
+                          style={{ padding: '3px 8px', fontSize: '11.5px', borderColor: '#F59E0B', color: '#B45309', backgroundColor: '#FFF' }}
+                          onClick={() => setStationDetails({ ...stationDetails, tariffId: '' })}
+                        >
+                          Change assign level
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {tariffSummary.activeLevel === 'Station Level' && (
+                    <div style={{ fontSize: '13px', color: '#475569' }}>
+                      {stationDetails.tariffId ? (
+                        <div>
+                          Inherited Station Tariff: <strong>{INITIAL_TARIFFS.find(t => t.id === stationDetails.tariffId)?.name || stationDetails.tariffId}</strong> ({INITIAL_TARIFFS.find(t => t.id === stationDetails.tariffId)?.rate ? `${INITIAL_TARIFFS.find(t => t.id === stationDetails.tariffId)?.rate.toFixed(2)} EGP/kWh` : ''})
+                        </div>
+                      ) : (
+                        <div style={{ color: 'var(--text-muted)' }}>
+                          No Station-Level Tariff assigned (Default: Free / Unassigned).
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {tariffSummary.activeLevel === 'Point Level' && (
+                    <div>
+                      <div style={{ fontSize: '12.5px', color: '#475569', marginBottom: '8px' }}>
+                        Points with individual Point-Level tariffs assigned:
+                      </div>
+                      <div className="spec-chips">
+                        {tariffSummary.pointTariffsList.map(pt => (
+                          <span key={pt.pointId} className="spec-chip dc">
+                            <strong>{pt.pointId}</strong> ➔ {pt.tariffName}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {tariffSummary.activeLevel === 'Connector Level' && (
+                    <div>
+                      <div style={{ fontSize: '12.5px', color: '#475569', marginBottom: '8px' }}>
+                        Connectors with individual Connector-Level tariffs assigned:
+                      </div>
+                      <div className="spec-chips">
+                        {tariffSummary.connectorTariffsList.map((ct, idx) => (
+                          <span key={`${ct.pointId}-${ct.connectorLabel}-${idx}`} className="spec-chip dc">
+                            <strong>{ct.pointId} [{ct.connectorLabel}]</strong> ➔ {ct.tariffName}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -2350,7 +2469,7 @@
                   {stationDetails.tariffId && <span style={{ fontSize: '11px', color: 'var(--primary)', marginTop: '6px', display: 'block' }}>⚠️ Lower-level point and connector tariff selections are locked/overridden.</span>}
                 </div>
 
-                <div className="review-card-title">Chargers Configuration (Blocks)</div>
+                <div className="review-card-title">Chargers Configuration (Models)</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   {blocks.map((block, idx) => {
                     const errs = blockErrors[block.id] || {};
@@ -2361,12 +2480,14 @@
                     return (
                       <div key={block.id} className="repeater-block" style={{ backgroundColor: '#fff', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '8px' }}>
                         <div className="repeater-block-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-                          <span style={{ fontWeight: '600', color: 'var(--primary)' }}>Block #{idx + 1} {!isNewBlock && <span className="badge" style={{ fontSize: '9px', backgroundColor: '#F1F5F9', color: '#475569', marginLeft: '6px' }}>EXISTING</span>}</span>
+                          <span style={{ fontWeight: '600', color: 'var(--text-color)', fontSize: '14px' }}>
+                            ⚡ Charger Model #{idx + 1} {selectedModel ? `(${selectedModel.name})` : ''} {!isNewBlock && <span className="badge" style={{ fontSize: '9px', backgroundColor: '#F1F5F9', color: '#475569', marginLeft: '6px' }}>EXISTING</span>}
+                          </span>
                           {canRemove ? (
-                            <button className="repeater-block-remove btn btn-danger" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={() => setBlocks(blocks.filter(b => b.id !== block.id))}>Delete Block</button>
+                            <button className="repeater-block-remove btn btn-secondary" style={{ padding: '4px 10px', fontSize: '12px', color: '#EF4444', borderColor: '#FECACA' }} onClick={() => setBlocks(blocks.filter(b => b.id !== block.id))}>Remove Model</button>
                           ) : (
-                            <Tooltip text="Blocks containing active or inactive charging points cannot be deleted.">
-                              <button className="repeater-block-remove btn btn-danger" style={{ padding: '4px 10px', fontSize: '12px', opacity: 0.5, cursor: 'not-allowed' }} disabled>Delete Block</button>
+                            <Tooltip text="Models containing active or inactive charging points cannot be removed.">
+                              <button className="repeater-block-remove btn btn-secondary" style={{ padding: '4px 10px', fontSize: '12px', opacity: 0.5, cursor: 'not-allowed' }} disabled>Remove Model</button>
                             </Tooltip>
                           )}
                         </div>
@@ -2379,21 +2500,24 @@
                               options={models} 
                               value={block.modelId} 
                               onChange={(val) => updateBlockField(block.id, 'modelId', val)} 
-                              placeholder="Select Model..." 
+                              placeholder="Select Charger Model..." 
                               error={errs.modelId} 
                               disabled={!isNewBlock}
                             />
                             {errs.modelId && <div className="error-text">{errs.modelId}</div>}
                             {selectedModel && (
-                              <div className="spec-chips">
-                                {selectedModel.connectorTypes.map((c, cidx) => (
-                                  <span key={cidx} className={`spec-chip ${c.kind === 'DC' ? 'dc' : ''}`}>
-                                    {c.label} ({c.power})
+                              <div style={{ marginTop: '10px' }}>
+                                <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '4px' }}>Model Specifications & Connectors:</div>
+                                <div className="spec-chips">
+                                  {selectedModel.connectorTypes.map((c, cidx) => (
+                                    <span key={cidx} className={`spec-chip ${c.kind === 'DC' ? 'dc' : ''}`}>
+                                      ⚡ {c.label} ({c.power}) — {c.kind}
+                                    </span>
+                                  ))}
+                                  <span className="spec-chip" style={{ background: '#EDF2F7', color: '#2D3748' }}>
+                                    Total: {getConnectorCountsStr(selectedModel)}
                                   </span>
-                                ))}
-                                <span className="spec-chip" style={{ background: '#F1F5F9', color: '#475569', fontWeight: 'bold' }}>
-                                  Total: {getConnectorCountsStr(selectedModel)}
-                                </span>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -2444,18 +2568,71 @@
 
                             {/* Block Tariff Selectors */}
                             {stationDetails.tariffId ? (
-                              <div className="warning-banner" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#B45309', display: 'flex', gap: '8px', alignItems: 'center', padding: '12px', borderRadius: '6px', marginBottom: '8px', fontSize: '13px' }}>
-                                <span>⚠️</span>
-                                <div><strong>Overridden by Station-Level Tariff:</strong> {INITIAL_TARIFFS.find(t => t.id === stationDetails.tariffId)?.name || stationDetails.tariffId}</div>
+                              <div className="warning-banner" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#B45309', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderRadius: '6px', marginBottom: '8px', fontSize: '13px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ fontSize: '16px' }}>⚠️</span>
+                                  <div>
+                                    <strong>Overridden by Station-Level Tariff:</strong> {INITIAL_TARIFFS.find(t => t.id === stationDetails.tariffId)?.name || stationDetails.tariffId}
+                                  </div>
+                                </div>
+                                <button 
+                                  className="btn btn-secondary" 
+                                  style={{ 
+                                    padding: '5px 12px', 
+                                    fontSize: '12px', 
+                                    fontWeight: '600', 
+                                    backgroundColor: '#FFFFFF', 
+                                    borderColor: '#F59E0B', 
+                                    color: '#B45309',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                  }}
+                                  onClick={() => setStationDetails({ ...stationDetails, tariffId: '' })}
+                                >
+                                  Change assign level
+                                </button>
                               </div>
                             ) : (
                               <>
                                 {block.tariffMode === 'station' && (
-                                  <div className="warning-banner" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', display: 'flex', gap: '8px', alignItems: 'center', padding: '12px', borderRadius: '6px', marginBottom: '8px', fontSize: '13px' }}>
-                                    <span>ℹ️</span>
-                                    <div>
-                                      <strong>Inherited Station Tariff:</strong> {stationDetails.tariffId ? (INITIAL_TARIFFS.find(t => t.id === stationDetails.tariffId)?.name || stationDetails.tariffId) : <span style={{ color: 'var(--text-muted)' }}>None (Free / Unassigned)</span>}
+                                  <div className="form-group" style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', padding: '16px', borderRadius: '8px', marginBottom: '12px' }}>
+                                    <label className="form-label" style={{ fontWeight: '600', color: 'var(--text-main)', marginBottom: '8px', display: 'block' }}>
+                                      Assign Station-Level Tariff for {selectedModel?.name || 'Model'}
+                                    </label>
+                                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                      <div style={{ flex: 1 }}>
+                                        <SearchableDropdown 
+                                          options={INITIAL_TARIFFS} 
+                                          value={block.tempStationTariffId || stationDetails.tariffId || ''} 
+                                          onChange={(val) => updateBlockField(block.id, 'tempStationTariffId', val)} 
+                                          placeholder="Select Station Tariff to Apply..." 
+                                        />
+                                      </div>
+                                      <button 
+                                        className="btn btn-primary" 
+                                        style={{ 
+                                          padding: '8px 18px', 
+                                          whiteSpace: 'nowrap', 
+                                          display: 'flex', 
+                                          alignItems: 'center', 
+                                          gap: '6px', 
+                                          fontWeight: '600',
+                                          backgroundColor: 'var(--primary)',
+                                          borderRadius: '6px'
+                                        }}
+                                        onClick={() => {
+                                          const selectedTariff = block.tempStationTariffId || stationDetails.tariffId || (INITIAL_TARIFFS[0] ? INITIAL_TARIFFS[0].id : '');
+                                          setStationDetails({ ...stationDetails, tariffId: selectedTariff });
+                                        }}
+                                      >
+                                        <span>+ Confirm</span>
+                                      </button>
                                     </div>
+                                    <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '8px', display: 'block' }}>
+                                      Click <strong>+ Confirm</strong> to apply and lock this Station-Level Tariff across all points.
+                                    </span>
                                   </div>
                                 )}
 
@@ -2622,11 +2799,18 @@
                   })}
                 </div>
 
-                <button className="btn btn-secondary" onClick={() => setBlocks([...blocks, { id: Date.now(), modelId: '', tariffMode: 'station', tariffId: '', connectorTariffs: [], communityId: '', pointCount: 1, pointIds: [''], originalPointIds: [] }])} style={{ alignSelf: 'flex-start', marginTop: '10px' }}>+ Add Block</button>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => setBlocks([...blocks, { id: Date.now(), modelId: '', tariffMode: 'station', tariffId: '', connectorTariffs: [], communityId: '', pointCount: 1, pointIds: [''], originalPointIds: [] }])} 
+                  style={{ alignSelf: 'flex-start', marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Icon name="plus" />
+                  <span>+ Add Model</span>
+                </button>
                 
-                <div className="summary-footer" style={{ background: '#F8FAFC', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: '600', color: 'var(--text-main)' }}>
+                <div className="summary-footer" style={{ background: '#F8FAFC', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: '600', color: 'var(--text-main)', fontSize: '13px' }}>
                   <span>Summary Running Total:</span>
-                  <span>{blocks.length} Blocks — {blocks.reduce((acc, b) => acc + b.pointCount, 0)} Points</span>
+                  <span><strong>{blocks.length}</strong> Charger {blocks.length === 1 ? 'Model' : 'Models'} — <strong>{blocks.reduce((acc, b) => acc + b.pointCount, 0)}</strong> Total Points</span>
                 </div>
               </div>
             )}
@@ -2681,6 +2865,7 @@
       const { points, stations, models, deletePoint, closePointOnApp, openPointOnApp } = useContext(CpoContext);
       
       const [globalSearch, setGlobalSearch] = useState('');
+      const [activeKpiFilter, setActiveKpiFilter] = useState(null);
       
       // FIXED: Removed name column filter per User Request
       const [columnFilters, setColumnFilters] = useState({ id: '', stationId: '', status: '', modelId: '', tariffId: '', communityId: '', appStatus: '' });
@@ -2692,7 +2877,6 @@
       // Modals
       const [deleteModalPoint, setDeleteModalPoint] = useState(null);
       const [closeAppModalPoint, setCloseAppModalPoint] = useState(null);
-      // FIXED: Removed reassignModalPoint and reassignStationId states (Fix 4)
 
       useEffect(() => {
         const handleClickOutside = (e) => {
@@ -2702,6 +2886,11 @@
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
       }, []);
+
+      // KPI Metrics calculated at Charging Points level
+      const activePointsCount = useMemo(() => points.filter(p => !p.isDeleted && !p.isHistorical && p.status === 'Active').length, [points]);
+      const needsAttentionPointsCount = useMemo(() => points.filter(p => !p.isDeleted && !p.isHistorical && (p.status === 'Inactive' || p.status === 'Partial Active' || p.status === 'Undefined')).length, [points]);
+      const activeSessionsCount = useMemo(() => points.filter(p => !p.isDeleted && !p.isHistorical && p.activeSessionNow).length, [points]);
 
       const uniqueColumnValues = useMemo(() => {
         return {
@@ -2723,6 +2912,11 @@
             const mName = models.find(m => m.id === p.modelId)?.name || '';
             return p.id.toLowerCase().includes(query) || mName.toLowerCase().includes(query);
           });
+        }
+        if (activeKpiFilter === 'Active') {
+          result = result.filter(p => !p.isDeleted && p.status === 'Active');
+        } else if (activeKpiFilter === 'NeedsAttention') {
+          result = result.filter(p => !p.isDeleted && (p.status === 'Inactive' || p.status === 'Partial Active' || p.status === 'Undefined'));
         }
         Object.keys(columnFilters).forEach(key => {
           const val = columnFilters[key];
@@ -2750,10 +2944,29 @@
           const bStat = b.isDeleted ? 'Deleted' : b.status;
           return SORT_ORDER[aStat] - SORT_ORDER[bStat];
         });
-      }, [points, globalSearch, columnFilters, models]);
+      }, [points, globalSearch, activeKpiFilter, columnFilters, models]);
 
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* Point-level KPI Dashboard */}
+          <div className="kpi-container">
+            <div className={`kpi-card clickable ${activeKpiFilter === 'Active' ? 'active-filter' : ''}`} onClick={() => setActiveKpiFilter(activeKpiFilter === 'Active' ? null : 'Active')}>
+              <div className="kpi-title">Active Points</div>
+              <div className="kpi-value">{activePointsCount}</div>
+              <div className="kpi-subtitle">Showing all live charging points</div>
+            </div>
+            <div className={`kpi-card clickable ${activeKpiFilter === 'NeedsAttention' ? 'active-filter' : ''}`} onClick={() => setActiveKpiFilter(activeKpiFilter === 'NeedsAttention' ? null : 'NeedsAttention')}>
+              <div className="kpi-title">Needs Attention</div>
+              <div className="kpi-value">{needsAttentionPointsCount}</div>
+              <div className="kpi-subtitle">Inactive or Partial Active charging points</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-title">Active Charging Sessions</div>
+              <div className="kpi-value" style={{ color: 'var(--primary)' }}>{activeSessionsCount}</div>
+              <div className="kpi-subtitle">Network-wide active sessions</div>
+            </div>
+          </div>
+
           <div className="toolbar">
             <div className="toolbar-left">
               <div className="search-input-wrapper">
@@ -2761,8 +2974,8 @@
                 {/* FIXED: Updated placeholder text per User Request */}
                 <input type="text" className="search-input" placeholder="Search Charger ID, Model..." value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)} />
               </div>
-              {(globalSearch || Object.values(columnFilters).some(f => f)) && (
-                <span className="clear-filters" onClick={() => { setGlobalSearch(''); setColumnFilters({ id: '', stationId: '', status: '', modelId: '', tariffId: '', communityId: '', appStatus: '' }); }}>Clear all filters</span>
+              {(globalSearch || activeKpiFilter || Object.values(columnFilters).some(f => f)) && (
+                <span className="clear-filters" onClick={() => { setGlobalSearch(''); setActiveKpiFilter(null); setColumnFilters({ id: '', stationId: '', status: '', modelId: '', tariffId: '', communityId: '', appStatus: '' }); }}>Clear all filters</span>
               )}
             </div>
           </div>
